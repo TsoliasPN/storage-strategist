@@ -1,14 +1,16 @@
 use std::collections::{HashMap, HashSet};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{
     atomic::{AtomicBool, Ordering},
     Arc,
 };
-use std::time::Instant;
+use std::time::{Instant, UNIX_EPOCH};
 
 use anyhow::{anyhow, Result};
 use chrono::{DateTime, Duration, SecondsFormat, Utc};
 use globset::{Glob, GlobSet, GlobSetBuilder};
+use serde::{Deserialize, Serialize};
 use sysinfo::{DiskKind as SysDiskKind, Disks};
 use tracing::info;
 use uuid::Uuid;
@@ -38,6 +40,9 @@ use parallel_disk_usage::{
 const PDU_INSPIRED_BANNED_AUTO_ROOTS: &[&str] = &[
     "/dev", "/proc", "/sys", "/run", "/mnt", "/media", "/cdrom", "/Volumes", "/System",
 ];
+const CACHE_SCHEMA_VERSION: u32 = 1;
+const CACHE_DIR_NAME: &str = "storage-strategist-cache";
+const DEFAULT_CACHE_TTL_SECONDS: u64 = 900;
 
 #[derive(Debug, Clone)]
 pub struct ScanOptions {
@@ -56,6 +61,9 @@ pub struct ScanOptions {
     pub scan_id: Option<String>,
     pub emit_progress_events: bool,
     pub progress_interval_ms: u64,
+    pub incremental_cache: bool,
+    pub cache_dir: Option<PathBuf>,
+    pub cache_ttl_seconds: u64,
     pub cancel_flag: Option<Arc<AtomicBool>>,
 }
 
@@ -77,9 +85,44 @@ impl Default for ScanOptions {
             scan_id: None,
             emit_progress_events: false,
             progress_interval_ms: 250,
+            incremental_cache: false,
+            cache_dir: None,
+            cache_ttl_seconds: DEFAULT_CACHE_TTL_SECONDS,
             cancel_flag: None,
         }
     }
+}
+
+#[derive(Debug, Serialize)]
+struct ScanCacheKey {
+    roots: Vec<String>,
+    max_depth: Option<usize>,
+    excludes: Vec<String>,
+    dedupe: bool,
+    dedupe_min_size: u64,
+    backend: ScanBackendKind,
+    min_ratio: Option<f32>,
+    largest_files_limit: usize,
+    largest_directories_limit: usize,
+    top_extensions_limit: usize,
+    report_version: String,
+    cache_schema_version: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ScanCacheEntry {
+    schema_version: u32,
+    key: String,
+    created_at: String,
+    root_signatures: Vec<CacheRootSignature>,
+    report: Report,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+struct CacheRootSignature {
+    path: String,
+    exists: bool,
+    modified_unix_secs: Option<i64>,
 }
 
 #[derive(Debug, Clone)]
@@ -344,6 +387,36 @@ where
     let roots = resolve_roots(options, &disks, &mut warnings)?;
     let excludes = ExcludeMatcher::new(&options.excludes, &mut warnings);
 
+    if let Some(mut cached_report) =
+        try_load_cached_report(options, &scan_id, &roots, &mut warnings, started.elapsed())
+    {
+        emit_scan_event(
+            options,
+            &mut on_event,
+            &scan_id,
+            &mut total_events,
+            &mut phase_counts,
+            ScanPhase::Done,
+            None,
+            cached_report.scan_metrics.scanned_files,
+            cached_report.scan_metrics.scanned_bytes,
+            cached_report.warnings.len() as u64,
+        );
+
+        cached_report.scan_progress_summary = ScanProgressSummary {
+            total_events,
+            phase_counts: phase_counts
+                .iter()
+                .map(|(phase, events)| ScanPhaseCount {
+                    phase: phase.clone(),
+                    events: *events,
+                })
+                .collect(),
+            completed: true,
+        };
+        return Ok(cached_report);
+    }
+
     emit_scan_event(
         options,
         &mut on_event,
@@ -523,6 +596,8 @@ where
             .collect(),
         completed: true,
     };
+
+    persist_cached_report(options, &roots, &mut report);
 
     Ok(report)
 }
@@ -1044,6 +1119,11 @@ fn validate_scan_options(options: &ScanOptions) -> Result<()> {
     if options.progress_interval_ms == 0 {
         return Err(anyhow!("progress_interval_ms must be greater than zero"));
     }
+    if options.incremental_cache && options.cache_ttl_seconds == 0 {
+        return Err(anyhow!(
+            "cache_ttl_seconds must be greater than zero when incremental_cache is enabled"
+        ));
+    }
     Ok(())
 }
 
@@ -1054,10 +1134,285 @@ fn is_cancelled(options: &ScanOptions) -> bool {
         .is_some_and(|flag| flag.load(Ordering::Relaxed))
 }
 
+fn try_load_cached_report(
+    options: &ScanOptions,
+    scan_id: &str,
+    roots: &[PathBuf],
+    pending_warnings: &mut Vec<String>,
+    elapsed: std::time::Duration,
+) -> Option<Report> {
+    if !options.incremental_cache {
+        return None;
+    }
+
+    let cache_key = match build_scan_cache_key(roots, options) {
+        Ok(value) => value,
+        Err(err) => {
+            pending_warnings.push(format!("cache key generation failed: {err}"));
+            return None;
+        }
+    };
+    let cache_path = scan_cache_path(options, &cache_key);
+
+    let payload = match fs::read_to_string(&cache_path) {
+        Ok(value) => value,
+        Err(err) => {
+            if err.kind() != std::io::ErrorKind::NotFound {
+                pending_warnings.push(format!(
+                    "incremental cache read failed for {}: {}",
+                    cache_path.display(),
+                    err
+                ));
+            }
+            return None;
+        }
+    };
+
+    let entry: ScanCacheEntry = match serde_json::from_str(&payload) {
+        Ok(value) => value,
+        Err(err) => {
+            pending_warnings.push(format!(
+                "incremental cache payload invalid for {}: {}",
+                cache_path.display(),
+                err
+            ));
+            return None;
+        }
+    };
+
+    if entry.schema_version != CACHE_SCHEMA_VERSION || entry.key != cache_key {
+        return None;
+    }
+
+    let created_at = match DateTime::parse_from_rfc3339(&entry.created_at) {
+        Ok(value) => value.with_timezone(&Utc),
+        Err(err) => {
+            pending_warnings.push(format!(
+                "incremental cache timestamp parse failed for {}: {}",
+                cache_path.display(),
+                err
+            ));
+            return None;
+        }
+    };
+    let age_seconds = Utc::now()
+        .signed_duration_since(created_at)
+        .num_seconds()
+        .max(0) as u64;
+    if age_seconds > options.cache_ttl_seconds {
+        return None;
+    }
+
+    let current_signatures = collect_root_signatures(roots, pending_warnings);
+    if current_signatures != entry.root_signatures {
+        return None;
+    }
+
+    let mut report = entry.report;
+    report.scan_id = scan_id.to_string();
+    report.generated_at = Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true);
+    report.scan.roots = roots
+        .iter()
+        .map(|path| path.to_string_lossy().to_string())
+        .collect();
+    report.scan.max_depth = options.max_depth;
+    report.scan.excludes = options.excludes.clone();
+    report.scan.dedupe = options.dedupe;
+    report.scan.dedupe_min_size = options.dedupe_min_size;
+    report.scan.dry_run = options.dry_run;
+    report.scan.backend = options.backend.clone();
+    report.scan.progress = options.progress;
+    report.scan.min_ratio = options.min_ratio;
+    report.scan.emit_progress_events = options.emit_progress_events;
+    report.scan.progress_interval_ms = options.progress_interval_ms;
+    report.scan_metrics.backend = options.backend.clone();
+    report.scan_metrics.elapsed_ms = elapsed.as_millis().try_into().unwrap_or(u64::MAX);
+    report.scan_metrics.scanned_roots = roots.len() as u64;
+    merge_warnings(&mut report.warnings, pending_warnings);
+    append_warning_once(
+        &mut report.warnings,
+        format!(
+            "scan result loaded from incremental cache: {}",
+            cache_path.display()
+        ),
+    );
+
+    Some(report)
+}
+
+fn persist_cached_report(options: &ScanOptions, roots: &[PathBuf], report: &mut Report) {
+    if !options.incremental_cache {
+        return;
+    }
+    if report
+        .warnings
+        .iter()
+        .any(|warning| warning.to_lowercase().contains("scan canceled"))
+    {
+        return;
+    }
+
+    let cache_key = match build_scan_cache_key(roots, options) {
+        Ok(value) => value,
+        Err(err) => {
+            append_warning_once(
+                &mut report.warnings,
+                format!("cache key generation failed: {err}"),
+            );
+            return;
+        }
+    };
+
+    let root_signatures = collect_root_signatures(roots, &mut report.warnings);
+    let cache_path = scan_cache_path(options, &cache_key);
+    let cache_entry = ScanCacheEntry {
+        schema_version: CACHE_SCHEMA_VERSION,
+        key: cache_key,
+        created_at: Utc::now().to_rfc3339_opts(SecondsFormat::Secs, true),
+        root_signatures,
+        report: report.clone(),
+    };
+
+    if let Err(err) = fs::create_dir_all(scan_cache_dir(options)) {
+        append_warning_once(
+            &mut report.warnings,
+            format!(
+                "incremental cache directory create failed for {}: {}",
+                cache_path.display(),
+                err
+            ),
+        );
+        return;
+    }
+
+    let payload = match serde_json::to_string(&cache_entry) {
+        Ok(value) => value,
+        Err(err) => {
+            append_warning_once(
+                &mut report.warnings,
+                format!("incremental cache serialization failed: {err}"),
+            );
+            return;
+        }
+    };
+
+    if let Err(err) = fs::write(&cache_path, payload) {
+        append_warning_once(
+            &mut report.warnings,
+            format!(
+                "incremental cache write failed for {}: {}",
+                cache_path.display(),
+                err
+            ),
+        );
+    }
+}
+
+fn build_scan_cache_key(roots: &[PathBuf], options: &ScanOptions) -> Result<String> {
+    let key = ScanCacheKey {
+        roots: roots
+            .iter()
+            .map(|root| normalize_cache_path(root.as_path()))
+            .collect(),
+        max_depth: options.max_depth,
+        excludes: options.excludes.clone(),
+        dedupe: options.dedupe,
+        dedupe_min_size: options.dedupe_min_size,
+        backend: options.backend.clone(),
+        min_ratio: options.min_ratio,
+        largest_files_limit: options.largest_files_limit,
+        largest_directories_limit: options.largest_directories_limit,
+        top_extensions_limit: options.top_extensions_limit,
+        report_version: REPORT_VERSION.to_string(),
+        cache_schema_version: CACHE_SCHEMA_VERSION,
+    };
+    let payload = serde_json::to_vec(&key)?;
+    Ok(blake3::hash(&payload).to_hex().to_string())
+}
+
+fn scan_cache_dir(options: &ScanOptions) -> PathBuf {
+    options
+        .cache_dir
+        .clone()
+        .unwrap_or_else(|| std::env::temp_dir().join(CACHE_DIR_NAME))
+}
+
+fn scan_cache_path(options: &ScanOptions, cache_key: &str) -> PathBuf {
+    scan_cache_dir(options).join(format!("{cache_key}.json"))
+}
+
+fn collect_root_signatures(
+    roots: &[PathBuf],
+    warnings: &mut Vec<String>,
+) -> Vec<CacheRootSignature> {
+    let mut signatures = Vec::with_capacity(roots.len());
+    for root in roots {
+        match fs::metadata(root) {
+            Ok(metadata) => {
+                let modified_unix_secs = metadata
+                    .modified()
+                    .ok()
+                    .and_then(|value| value.duration_since(UNIX_EPOCH).ok())
+                    .and_then(|duration| i64::try_from(duration.as_secs()).ok());
+                signatures.push(CacheRootSignature {
+                    path: normalize_cache_path(root.as_path()),
+                    exists: true,
+                    modified_unix_secs,
+                });
+            }
+            Err(err) => {
+                append_warning_once(
+                    warnings,
+                    format!(
+                        "cache signature probe failed for {}: {}",
+                        root.display(),
+                        err
+                    ),
+                );
+                signatures.push(CacheRootSignature {
+                    path: normalize_cache_path(root.as_path()),
+                    exists: false,
+                    modified_unix_secs: None,
+                });
+            }
+        }
+    }
+    signatures
+}
+
+fn merge_warnings(target: &mut Vec<String>, source: &[String]) {
+    for warning in source {
+        append_warning_once(target, warning.clone());
+    }
+}
+
+fn append_warning_once(target: &mut Vec<String>, warning: String) {
+    if !target.iter().any(|value| value == &warning) {
+        target.push(warning);
+    }
+}
+
+fn normalize_cache_path(path: &Path) -> String {
+    #[cfg(windows)]
+    {
+        path.to_string_lossy().replace('\\', "/").to_lowercase()
+    }
+    #[cfg(not(windows))]
+    {
+        path.to_string_lossy().replace('\\', "/")
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{should_skip_auto_root, validate_scan_options, ExcludeMatcher, ScanOptions};
+    use super::{
+        run_scan, should_skip_auto_root, validate_scan_options, ExcludeMatcher, ScanOptions,
+    };
+    use std::fs;
     use std::path::Path;
+    use std::thread;
+    use std::time::Duration;
+    use tempfile::tempdir;
 
     #[test]
     fn exclude_matcher_matches_glob_and_substring() {
@@ -1091,5 +1446,74 @@ mod tests {
             ..ScanOptions::default()
         };
         assert!(validate_scan_options(&options).is_err());
+    }
+
+    #[test]
+    fn validates_cache_ttl_when_incremental_cache_enabled() {
+        let options = ScanOptions {
+            incremental_cache: true,
+            cache_ttl_seconds: 0,
+            ..ScanOptions::default()
+        };
+        assert!(validate_scan_options(&options).is_err());
+    }
+
+    #[test]
+    fn incremental_cache_hits_on_second_run() {
+        let root = tempdir().expect("temp root");
+        let cache_dir = tempdir().expect("cache root");
+        fs::write(root.path().join("a.bin"), vec![42_u8; 1024]).expect("seed file");
+
+        let options = ScanOptions {
+            paths: vec![root.path().to_path_buf()],
+            max_depth: Some(4),
+            incremental_cache: true,
+            cache_dir: Some(cache_dir.path().to_path_buf()),
+            cache_ttl_seconds: 900,
+            ..ScanOptions::default()
+        };
+
+        let first = run_scan(&options).expect("first scan succeeds");
+        assert!(!first
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("incremental cache")));
+
+        let second = run_scan(&options).expect("second scan succeeds");
+        assert!(second
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("scan result loaded from incremental cache")));
+        assert_eq!(
+            first.scan_metrics.scanned_files,
+            second.scan_metrics.scanned_files
+        );
+    }
+
+    #[test]
+    fn incremental_cache_misses_when_root_signature_changes() {
+        let root = tempdir().expect("temp root");
+        let cache_dir = tempdir().expect("cache root");
+        fs::write(root.path().join("a.bin"), vec![7_u8; 512]).expect("seed file");
+
+        let options = ScanOptions {
+            paths: vec![root.path().to_path_buf()],
+            max_depth: Some(4),
+            incremental_cache: true,
+            cache_dir: Some(cache_dir.path().to_path_buf()),
+            cache_ttl_seconds: 900,
+            ..ScanOptions::default()
+        };
+
+        let first = run_scan(&options).expect("first scan succeeds");
+        thread::sleep(Duration::from_secs(1));
+        fs::write(root.path().join("b.bin"), vec![9_u8; 256]).expect("change root");
+
+        let second = run_scan(&options).expect("second scan succeeds");
+        assert!(!second
+            .warnings
+            .iter()
+            .any(|warning| warning.contains("scan result loaded from incremental cache")));
+        assert!(second.scan_metrics.scanned_files > first.scan_metrics.scanned_files);
     }
 }

@@ -77,6 +77,25 @@ const mockDoctor = {
   notes: [],
 };
 
+const mockScenarioPlan = {
+  generated_at: "2026-02-12T00:00:03Z",
+  scan_id: "scan-e2e-1",
+  assumptions: ["Read-only simulation"],
+  scenarios: [
+    {
+      scenario_id: "conservative",
+      title: "Conservative",
+      strategy: "conservative",
+      recommendation_ids: ["cloud-backed-target-exclusion"],
+      recommendation_count: 1,
+      projected_space_saving_bytes: 0,
+      risk_mix: { low: 1, medium: 0, high: 0 },
+      blocked_recommendation_count: 0,
+      notes: [],
+    },
+  ],
+};
+
 const mockEvents = [
   {
     seq: 1,
@@ -102,7 +121,7 @@ const mockEvents = [
 
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(
-    ({ report, doctor, events }) => {
+    ({ report, doctor, events, scenarioPlan }) => {
       let sessionCalls = 0;
       let eventCalls = 0;
       const scanId = report.scan_id;
@@ -138,8 +157,23 @@ test.beforeEach(async ({ page }) => {
               return report;
             case "generate_recommendations":
               return { recommendations: report.recommendations };
+            case "plan_scenarios":
+              return scenarioPlan;
             case "doctor":
               return doctor;
+            case "export_diagnostics_bundle":
+              return {
+                generated_at: "2026-02-12T00:00:04Z",
+                source_report_path: "mock-report.json",
+                report,
+                doctor,
+                environment: {
+                  os: "windows",
+                  arch: "x86_64",
+                  read_only_mode: true,
+                  app_version: "0.1.0",
+                },
+              };
             case "cancel_scan":
               return null;
             default:
@@ -148,7 +182,7 @@ test.beforeEach(async ({ page }) => {
         },
       };
     },
-    { report: mockReport, doctor: mockDoctor, events: mockEvents }
+    { report: mockReport, doctor: mockDoctor, events: mockEvents, scenarioPlan: mockScenarioPlan }
   );
 });
 

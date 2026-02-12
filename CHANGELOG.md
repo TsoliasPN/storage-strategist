@@ -34,6 +34,23 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Desktop UI scaffold (`apps/desktop`) using Tauri + React (read-only).
 - Benchmark regression workflow (`.github/workflows/bench.yml`) and threshold script (`scripts/check_benchmark_regression.py`).
 - Benchmark baseline fixture (`fixtures/benchmark-baseline.json`).
+- Evaluation KPI threshold gate script (`scripts/check_eval_kpi_thresholds.py`) and CI job.
+- Expanded evaluation suite fixtures for active workload and OS-headroom/cloud scenarios.
+- OS-specific device metadata enrichers:
+  - Windows WMI bridge for model/vendor/interface/rotational hints.
+  - Linux `lsblk` bridge for model/vendor/transport/rotational hints.
+- Incremental scan cache with key/signature/TTL checks and warning-safe persistence.
+- Scenario planner module with conservative/balanced/aggressive read-only projections.
+- Diagnostics bundle generator/export path (report + doctor + environment metadata).
+- Service and Tauri APIs:
+  - `plan_scenarios_from_report`
+  - `export_diagnostics_bundle`
+- CLI commands:
+  - `plan`
+  - `diagnostics`
+- Desktop UI updates:
+  - `Scenarios` results tab
+  - diagnostics bundle export action
 
 ### Changed
 - Repository license migrated to `AGPL-3.0-or-later`.
@@ -42,6 +59,8 @@ The format is based on Keep a Changelog, and this project adheres to Semantic Ve
 - Recommendation engine now returns traceable bundle output before policy enforcement.
 - README/ARCHITECTURE/ROADMAP updated for AGPL workflow and new commands.
 - CLI backend naming standardized to `pdu_library` (`pdu` alias supported).
+- Desktop packaging workflow expanded to Windows/macOS/Linux matrix with optional signing env wiring.
+- Tauri bundle config enabled for packaging builds.
 
 ### Fixed
 - Recommendation dedup/contradiction handling now blocks duplicate recommendation IDs.

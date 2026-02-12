@@ -287,6 +287,13 @@ td {
   padding: 0.5rem 0.75rem;
 }
 
+.notice {
+  background: #e8f8ec;
+  border: 1px solid #badfc4;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
 @media (max-width: 860px) {
   .header {
     flex-direction: column;

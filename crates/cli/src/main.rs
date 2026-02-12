@@ -6,8 +6,9 @@ use clap::ArgAction;
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde::Serialize;
 use storage_strategist_core::{
-    collect_doctor_info, compare_backends, evaluate_suite_file, generate_recommendation_bundle,
-    render_markdown_summary, run_scan, Report, ScanBackendKind, ScanOptions,
+    build_diagnostics_bundle, build_scenario_plan, collect_doctor_info, compare_backends,
+    evaluate_suite_file, generate_recommendation_bundle, render_markdown_summary, run_scan, Report,
+    ScanBackendKind, ScanOptions,
 };
 use tracing_subscriber::EnvFilter;
 
@@ -36,6 +37,10 @@ enum Commands {
     Benchmark(BenchmarkArgs),
     /// Compare native and pdu_library backend outputs for parity checks.
     Parity(ParityArgs),
+    /// Build read-only what-if scenario projections from a report.
+    Plan(PlanArgs),
+    /// Export diagnostics bundle (report + doctor + environment metadata).
+    Diagnostics(DiagnosticsArgs),
 }
 
 #[derive(Debug, Copy, Clone, ValueEnum)]
@@ -95,6 +100,18 @@ struct ScanArgs {
     /// Optional minimum ratio filter for directory summaries (pdu-compatible behavior).
     #[arg(long)]
     min_ratio: Option<f32>,
+
+    /// Enable incremental scan cache lookups and writes.
+    #[arg(long)]
+    incremental_cache: bool,
+
+    /// Optional cache directory for incremental scan state.
+    #[arg(long, value_name = "DIR")]
+    cache_dir: Option<PathBuf>,
+
+    /// Cache time-to-live in seconds when incremental cache is enabled.
+    #[arg(long, default_value_t = 900, value_name = "SECONDS")]
+    cache_ttl_seconds: u64,
 
     /// Forward-compatible no-op in v1 (read-only is always active).
     #[arg(long)]
@@ -161,6 +178,32 @@ struct ParityArgs {
     output: Option<PathBuf>,
 }
 
+#[derive(Debug, Args)]
+struct PlanArgs {
+    /// Input report file.
+    #[arg(long, value_name = "FILE")]
+    report: PathBuf,
+
+    /// Optional JSON output file for scenario plan.
+    #[arg(long, value_name = "FILE")]
+    output: Option<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+struct DiagnosticsArgs {
+    /// Input report file.
+    #[arg(long, value_name = "FILE")]
+    report: PathBuf,
+
+    /// Diagnostics bundle output file.
+    #[arg(
+        long,
+        value_name = "FILE",
+        default_value = "storage-strategist-diagnostics.json"
+    )]
+    output: PathBuf,
+}
+
 #[derive(Debug, Serialize)]
 struct BenchmarkResult {
     iterations: usize,
@@ -185,6 +228,8 @@ fn main() -> Result<()> {
         Commands::Eval(args) => run_eval_command(args),
         Commands::Benchmark(args) => run_benchmark_command(args),
         Commands::Parity(args) => run_parity_command(args),
+        Commands::Plan(args) => run_plan_command(args),
+        Commands::Diagnostics(args) => run_diagnostics_command(args),
     }
 }
 
@@ -199,6 +244,9 @@ fn run_scan_command(args: ScanArgs) -> Result<()> {
         backend,
         progress,
         min_ratio,
+        incremental_cache,
+        cache_dir,
+        cache_ttl_seconds,
         dry_run,
     } = args;
 
@@ -211,6 +259,9 @@ fn run_scan_command(args: ScanArgs) -> Result<()> {
         backend: backend.into(),
         progress,
         min_ratio,
+        incremental_cache,
+        cache_dir,
+        cache_ttl_seconds,
         dry_run: true,
         ..ScanOptions::default()
     };
@@ -419,6 +470,72 @@ fn run_parity_command(args: ParityArgs) -> Result<()> {
             .with_context(|| format!("failed to write parity output {}", output.display()))?;
         println!("Parity JSON written to {}", output.display());
     }
+
+    Ok(())
+}
+
+fn run_plan_command(args: PlanArgs) -> Result<()> {
+    let data = fs::read_to_string(&args.report)
+        .with_context(|| format!("failed to read {}", args.report.display()))?;
+    let mut report: Report = serde_json::from_str(&data)
+        .with_context(|| format!("failed to parse {}", args.report.display()))?;
+
+    // Keep planner output aligned with current rule engine behavior.
+    let bundle = generate_recommendation_bundle(&report);
+    report.recommendations = bundle.recommendations;
+    report.rule_traces = bundle.rule_traces;
+    report.policy_decisions = bundle.policy_decisions;
+
+    let plan = build_scenario_plan(&report);
+    println!(
+        "Scenario plan generated for scan {} with {} scenario(s).",
+        plan.scan_id,
+        plan.scenarios.len()
+    );
+    for scenario in &plan.scenarios {
+        println!(
+            "- {} [{}] recs={} projected_space={} blocked={}",
+            scenario.title,
+            format!("{:?}", scenario.strategy).to_lowercase(),
+            scenario.recommendation_count,
+            scenario.projected_space_saving_bytes,
+            scenario.blocked_recommendation_count
+        );
+    }
+
+    if let Some(output) = args.output {
+        let payload =
+            serde_json::to_string_pretty(&plan).context("failed to serialize scenario plan")?;
+        fs::write(&output, payload)
+            .with_context(|| format!("failed to write plan output {}", output.display()))?;
+        println!("Scenario plan JSON written to {}", output.display());
+    }
+
+    Ok(())
+}
+
+fn run_diagnostics_command(args: DiagnosticsArgs) -> Result<()> {
+    let data = fs::read_to_string(&args.report)
+        .with_context(|| format!("failed to read {}", args.report.display()))?;
+    let report: Report = serde_json::from_str(&data)
+        .with_context(|| format!("failed to parse {}", args.report.display()))?;
+
+    let bundle = build_diagnostics_bundle(&report, Some(&args.report));
+    let payload =
+        serde_json::to_string_pretty(&bundle).context("failed to serialize diagnostics bundle")?;
+    fs::write(&args.output, payload).with_context(|| {
+        format!(
+            "failed to write diagnostics bundle {}",
+            args.output.display()
+        )
+    })?;
+
+    println!(
+        "Diagnostics bundle written to {} (scan_id={}, warnings={})",
+        args.output.display(),
+        bundle.report.scan_id,
+        bundle.report.warnings.len()
+    );
 
     Ok(())
 }

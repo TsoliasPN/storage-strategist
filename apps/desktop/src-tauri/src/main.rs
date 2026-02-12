@@ -1,11 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use storage_strategist_core::{DoctorInfo, RecommendationBundle, Report, ScanProgressEvent};
+use std::path::PathBuf;
+
+use storage_strategist_core::{
+    DiagnosticsBundle, DoctorInfo, RecommendationBundle, Report, ScanProgressEvent, ScenarioPlan,
+};
 use storage_strategist_service::{
-    cancel_scan as service_cancel_scan, doctor as service_doctor,
+    cancel_scan as service_cancel_scan, doctor as service_doctor, export_diagnostics_bundle as service_export_diagnostics_bundle,
     generate_recommendations_from_report, get_scan_session as service_get_scan_session,
     load_report as service_load_report, poll_scan_events as service_poll_scan_events, start_scan as service_start_scan,
-    CancelScanResponse, ScanRequest, ScanSessionSnapshot,
+    plan_scenarios_from_report as service_plan_scenarios_from_report, CancelScanResponse, ScanRequest,
+    ScanSessionSnapshot,
 };
 
 #[tauri::command]
@@ -39,6 +44,25 @@ fn generate_recommendations(report: Report) -> Result<RecommendationBundle, Stri
 }
 
 #[tauri::command]
+fn plan_scenarios(report: Report) -> Result<ScenarioPlan, String> {
+    Ok(service_plan_scenarios_from_report(&report))
+}
+
+#[tauri::command]
+fn export_diagnostics_bundle(
+    report: Report,
+    output_path: String,
+    source_report_path: Option<String>,
+) -> Result<DiagnosticsBundle, String> {
+    service_export_diagnostics_bundle(
+        &report,
+        output_path,
+        source_report_path.map(PathBuf::from),
+    )
+    .map_err(|err| err.to_string())
+}
+
+#[tauri::command]
 fn doctor() -> DoctorInfo {
     service_doctor()
 }
@@ -52,6 +76,8 @@ fn main() {
             cancel_scan,
             load_report,
             generate_recommendations,
+            plan_scenarios,
+            export_diagnostics_bundle,
             doctor,
         ])
         .run(tauri::generate_context!())

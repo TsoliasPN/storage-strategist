@@ -39,12 +39,14 @@ python scripts/check_compliance.py
 ## CLI Usage
 
 ```bash
-cargo run -p storage-strategist -- scan --paths "D:\\" "G:\\" --output storage-strategist-report.json --backend native --dedupe
+cargo run -p storage-strategist -- scan --paths "D:\\" "G:\\" --output storage-strategist-report.json --backend native --dedupe --incremental-cache --cache-ttl-seconds 900
 cargo run -p storage-strategist -- recommend --report storage-strategist-report.json --md summary.md
 cargo run -p storage-strategist -- doctor
 cargo run -p storage-strategist -- eval --suite fixtures/eval-suite.json --output eval-result.json
 cargo run -p storage-strategist -- benchmark --paths fixtures --max-depth 3 --iterations 2 --output benchmark-result.json
 cargo run -p storage-strategist -- parity --paths fixtures --max-depth 3
+cargo run -p storage-strategist -- plan --report storage-strategist-report.json --output scenario-plan.json
+cargo run -p storage-strategist -- diagnostics --report storage-strategist-report.json --output storage-strategist-diagnostics.json
 ```
 
 Backend values:
@@ -70,8 +72,9 @@ Scaffold lives in `apps/desktop`.
 Key screens:
 - Setup (guided path selection first)
 - Scanning (phase/counters/event feed)
-- Results tabs (`Disks`, `Usage`, `Categories`, `Duplicates`, `Recommendations`, `Rule Trace`)
+- Results tabs (`Disks`, `Usage`, `Categories`, `Duplicates`, `Scenarios`, `Recommendations`, `Rule Trace`)
 - Doctor diagnostics
+- Diagnostics bundle export action from Results
 
 Run locally:
 
@@ -88,12 +91,14 @@ npm run tauri dev
   - `clippy`
   - `test`
   - compliance checks
+  - evaluation KPI gate (`precision@3`, contradiction rate, unsafe recommendations)
   - desktop UI smoke tests (`apps/desktop`, Playwright)
 - `.github/workflows/bench.yml`
   - benchmark run
   - regression gate via `scripts/check_benchmark_regression.py` (15% threshold)
 - `.github/workflows/desktop-package.yml`
-  - manual desktop packaging build job (Windows)
+  - manual desktop packaging build job (Windows/macOS/Linux matrix)
+  - optional signing when `TAURI_SIGNING_PRIVATE_KEY` secrets are configured
 
 ## Parity and KPI Gate Definitions
 
@@ -105,6 +110,19 @@ npm run tauri dev
   - `contradiction_rate`: fraction of suite cases where `contradiction_count > 0`
   - `unsafe_recommendations`: count of emitted recommendations with `policy_safe == false`
   - source: `storage-strategist eval` / `crates/core/src/eval.rs`
+  - CI gate script: `scripts/check_eval_kpi_thresholds.py`
+
+## Incremental Cache and Planning
+
+- Incremental cache:
+  - enable with `scan --incremental-cache`
+  - cache key covers roots/options/backend and is validated by root signatures + TTL
+  - IO failures are warning-only and never abort scans
+- Scenario planner:
+  - `plan` command emits conservative/balanced/aggressive read-only what-if projections
+  - projections sum `estimated_impact.space_saving_bytes` for included policy-safe recommendations
+- Diagnostics bundle:
+  - `diagnostics` command exports report + doctor snapshot + environment metadata for support workflows
 
 ## Notes on `parallel-disk-usage` Inspiration
 

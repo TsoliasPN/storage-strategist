@@ -40,17 +40,23 @@ Key external findings from `parallel-disk-usage`:
 7. [x] **UI results workbench depth**
    - richer recommendation inspector and policy trace views
    - duplicate/group drill-down interactions
-8. [ ] **Rule calibration loop**
+8. [x] **Rule calibration loop**
    - fixture expansion + KPI thresholds in CI (`precision@3`, contradiction rate, unsafe target count)
-9. [ ] **Device intelligence providers**
+9. [x] **Device intelligence providers**
    - OS-specific enrichers for model/interface/rotational confidence
 
 ### P2 (Weeks 9-12)
 
-10. [ ] **Incremental scan cache**
-11. [ ] **Scenario planner (read-only what-if simulation)**
-12. [ ] **Release hardening**
+10. [x] **Incremental scan cache**
+    - best-effort cache key/signature/TTL checks with warning-only IO failures
+    - CLI/service/UI scan request support for cache controls
+11. [x] **Scenario planner (read-only what-if simulation)**
+    - conservative/balanced/aggressive what-if projections from policy-safe recommendations
+    - CLI/service/Tauri + desktop results-tab integration
+12. [x] **Release hardening**
     - installer/signing, diagnostics bundle, desktop packaging
+    - diagnostics bundle export across core/service/CLI/UI
+    - desktop packaging workflow expanded to Windows/macOS/Linux artifact builds
 
 ## Known Limitations
 
@@ -64,6 +70,7 @@ Key external findings from `parallel-disk-usage`:
 
 - `ScanOptions` additions:
   - `scan_id`, `emit_progress_events`, `progress_interval_ms`, `backend: ScanBackendKind`
+  - `incremental_cache`, `cache_dir`, `cache_ttl_seconds`
 - New event model:
   - `ScanProgressEvent`, `ScanPhase`, `ScanProgressSummary`
 - `DiskInfo` additions:
@@ -84,6 +91,8 @@ Implemented APIs:
 - `cancel_scan(scan_id) -> CancelScanResponse`
 - `load_report(path) -> Report`
 - `generate_recommendations_from_report(report) -> RecommendationBundle`
+- `plan_scenarios_from_report(report) -> ScenarioPlan`
+- `export_diagnostics_bundle(report, output, source_report_path) -> DiagnosticsBundle`
 - `doctor() -> DoctorInfo`
 
 ### Desktop UI (`apps/desktop`)
@@ -98,6 +107,7 @@ Information architecture:
 1. Setup screen (guided path selection first)
 2. Scanning screen (phase/events/counters + cancel)
 3. Results screen tabs (`Disks`, `Usage`, `Categories`, `Duplicates`, `Recommendations`, `Rule Trace`)
+   - includes `Scenarios` what-if planner tab
 4. Doctor screen (diagnostics + eligibility context)
 
 UX constraints:
@@ -117,6 +127,9 @@ UX constraints:
 8. [x] Scaffold Tauri + React app and connect setup/scan flow
 9. [x] Expand UI recommendation inspector and trace drilldowns
 10. [x] Add UI e2e smoke tests and packaging jobs
+11. [x] Add incremental cache flow (`scan` cache key/signature/TTL + warning-safe persistence)
+12. [x] Add scenario planner APIs and desktop `Scenarios` tab
+13. [x] Add diagnostics bundle export path and multi-OS packaging workflow hardening
 
 ## Test Scenarios (Implemented + Planned)
 
@@ -126,7 +139,13 @@ Implemented:
 - policy blocking for active-placement into media-role targets
 - scan exclude matching (glob + substring fallback)
 - fixture-based recommendation evaluation
+- expanded evaluation fixture suite with KPI threshold gate script
+- CI evaluation KPI gate (`precision@3`, contradiction rate, unsafe recommendations)
+- OS-specific disk metadata hints (Windows WMI and Linux `lsblk`)
 - desktop UI smoke tests for `setup -> scanning -> results -> doctor` flow (Playwright)
+- incremental cache hit/miss tests for root-signature change detection
+- scenario planner projection tests (risk-filtered conservative/balanced/aggressive sets)
+- diagnostics bundle generation test (report + source-path embedding)
 
 Planned next:
 - backend parity fixture assertions (`native` vs `pdu_library`)

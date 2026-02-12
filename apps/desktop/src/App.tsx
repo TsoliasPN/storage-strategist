@@ -4,9 +4,11 @@ import { open } from "@tauri-apps/plugin-dialog";
 import {
   cancelScan,
   doctor,
+  exportDiagnosticsBundle,
   generateRecommendations,
   getScanSession,
   loadReport,
+  planScenarios,
   pollScanEvents,
   startScan,
 } from "./api";
@@ -15,6 +17,7 @@ import type {
   PolicyDecision,
   Report,
   RuleTrace,
+  ScenarioPlan,
   ScanProgressEvent,
   ScanRequest,
   ScanSessionSnapshot,
@@ -26,6 +29,7 @@ type ResultTab =
   | "usage"
   | "categories"
   | "duplicates"
+  | "scenarios"
   | "recommendations"
   | "rule-trace";
 
@@ -61,6 +65,14 @@ function formatConfidence(confidence: number | null | undefined): string {
   return `${(confidence * 100).toFixed(1)}%`;
 }
 
+function deriveDiagnosticsOutputPath(sourcePath?: string): string {
+  const base = sourcePath?.trim() || DEFAULT_OUTPUT;
+  if (base.toLowerCase().endsWith(".json")) {
+    return `${base.slice(0, -5)}.diagnostics.json`;
+  }
+  return `${base}.diagnostics.json`;
+}
+
 function App() {
   const [screen, setScreen] = useState<Screen>("setup");
   const [tab, setTab] = useState<ResultTab>("recommendations");
@@ -78,8 +90,10 @@ function App() {
   const [session, setSession] = useState<ScanSessionSnapshot | null>(null);
   const [events, setEvents] = useState<ScanProgressEvent[]>([]);
   const [report, setReport] = useState<Report | null>(null);
+  const [scenarioPlan, setScenarioPlan] = useState<ScenarioPlan | null>(null);
   const [doctorInfo, setDoctorInfo] = useState<DoctorInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
   const [traceStatusFilter, setTraceStatusFilter] = useState<RuleTraceFilterStatus>("all");
   const [traceRecommendationFilter, setTraceRecommendationFilter] = useState<string>("all");
@@ -114,16 +128,19 @@ function App() {
           const reportPath = snapshot.report_path ?? output;
           const loaded = await loadReport(reportPath);
           const bundle = await generateRecommendations(loaded);
+          const nextReport = { ...loaded, recommendations: bundle.recommendations };
+          const nextScenarioPlan = await planScenarios(nextReport);
 
           if (!isActive) {
             return;
           }
 
-          const nextReport = { ...loaded, recommendations: bundle.recommendations };
           setReport(nextReport);
+          setScenarioPlan(nextScenarioPlan);
           setSelectedRecommendationId(nextReport.recommendations[0]?.id ?? null);
           setTraceStatusFilter("all");
           setTraceRecommendationFilter("all");
+          setNotice(null);
           setTab("recommendations");
           setScreen("results");
         }
@@ -243,6 +260,7 @@ function App() {
 
   const start = async () => {
     setError(null);
+    setNotice(null);
     if (paths.length === 0) {
       setError("Select at least one path before starting a scan.");
       return;
@@ -260,12 +278,15 @@ function App() {
       min_ratio: undefined,
       emit_progress_events: true,
       progress_interval_ms: 250,
+      incremental_cache: true,
+      cache_ttl_seconds: 900,
     };
 
     try {
       setEvents([]);
       setSession(null);
       setReport(null);
+      setScenarioPlan(null);
       const id = await startScan(request);
       setScanId(id);
       setScreen("scanning");
@@ -283,12 +304,31 @@ function App() {
 
   const loadDoctor = async () => {
     setError(null);
+    setNotice(null);
     try {
       const info = await doctor();
       setDoctorInfo(info);
       setScreen("doctor");
     } catch (doctorError) {
       setError(String(doctorError));
+    }
+  };
+
+  const exportDiagnostics = async () => {
+    if (!report) {
+      return;
+    }
+    setError(null);
+    setNotice(null);
+    try {
+      const sourcePath = session?.report_path ?? output;
+      const outputPath = deriveDiagnosticsOutputPath(sourcePath);
+      const bundle = await exportDiagnosticsBundle(report, outputPath, sourcePath);
+      setNotice(
+        `Diagnostics bundle written to ${outputPath} (scan ${bundle.report.scan_id}, warnings ${bundle.report.warnings.length}).`
+      );
+    } catch (bundleError) {
+      setError(String(bundleError));
     }
   };
 
@@ -338,6 +378,7 @@ function App() {
       </header>
 
       {error ? <p className="error">{error}</p> : null}
+      {notice ? <p className="notice">{notice}</p> : null}
 
       {screen === "setup" ? (
         <section className="panel">
@@ -473,12 +514,25 @@ function App() {
 
       {screen === "results" && report ? (
         <section className="panel">
-          <h2>Results Workbench</h2>
+          <div className="title-row">
+            <h2>Results Workbench</h2>
+            <button onClick={exportDiagnostics}>Export Diagnostics Bundle</button>
+          </div>
           <p>
             Report {report.report_version} generated at {report.generated_at}
           </p>
           <div className="tabs">
-            {(["disks", "usage", "categories", "duplicates", "recommendations", "rule-trace"] as ResultTab[]).map(
+            {(
+              [
+                "disks",
+                "usage",
+                "categories",
+                "duplicates",
+                "scenarios",
+                "recommendations",
+                "rule-trace",
+              ] as ResultTab[]
+            ).map(
               (item) => (
                 <button
                   key={item}
@@ -557,6 +611,48 @@ function App() {
                   <p>{dup.intent?.rationale}</p>
                 </article>
               ))}
+            </div>
+          ) : null}
+
+          {tab === "scenarios" ? (
+            <div className="scroll-block">
+              {!scenarioPlan ? <p className="muted">Scenario plan is unavailable.</p> : null}
+              {scenarioPlan ? (
+                <>
+                  <article className="card">
+                    <h3>Planner assumptions</h3>
+                    {scenarioPlan.assumptions.map((assumption, index) => (
+                      <p key={`${assumption}-${index}`}>{assumption}</p>
+                    ))}
+                  </article>
+                  {scenarioPlan.scenarios.map((scenario) => (
+                    <article key={scenario.scenario_id} className="card">
+                      <div className="title-row">
+                        <h3>{scenario.title}</h3>
+                        <span className="badge">{scenario.strategy}</span>
+                      </div>
+                      <p>
+                        recommendations {scenario.recommendation_count} | projected space saving{" "}
+                        {formatBytes(scenario.projected_space_saving_bytes)}
+                      </p>
+                      <p>
+                        risk mix low {scenario.risk_mix.low} / medium {scenario.risk_mix.medium} /
+                        high {scenario.risk_mix.high}
+                      </p>
+                      <p>policy blocked recommendations {scenario.blocked_recommendation_count}</p>
+                      <p>
+                        recommendation ids{" "}
+                        {scenario.recommendation_ids.length > 0
+                          ? scenario.recommendation_ids.join(", ")
+                          : "none"}
+                      </p>
+                      {scenario.notes.map((note, index) => (
+                        <p key={`${scenario.scenario_id}-note-${index}`}>{note}</p>
+                      ))}
+                    </article>
+                  ))}
+                </>
+              ) : null}
             </div>
           ) : null}
 

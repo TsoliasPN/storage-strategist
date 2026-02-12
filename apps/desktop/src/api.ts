@@ -1,9 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type {
+  DiagnosticsBundle,
   DoctorInfo,
   RecommendationBundle,
   Report,
+  ScenarioPlan,
   ScanProgressEvent,
   ScanRequest,
   ScanSessionSnapshot,
@@ -41,6 +43,22 @@ export async function generateRecommendations(
   report: Report
 ): Promise<RecommendationBundle> {
   return invoke<RecommendationBundle>("generate_recommendations", { report });
+}
+
+export async function planScenarios(report: Report): Promise<ScenarioPlan> {
+  return invoke<ScenarioPlan>("plan_scenarios", { report });
+}
+
+export async function exportDiagnosticsBundle(
+  report: Report,
+  outputPath: string,
+  sourceReportPath?: string
+): Promise<DiagnosticsBundle> {
+  return invoke<DiagnosticsBundle>("export_diagnostics_bundle", {
+    report,
+    outputPath,
+    sourceReportPath,
+  });
 }
 
 export async function doctor(): Promise<DoctorInfo> {

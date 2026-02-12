@@ -11,8 +11,10 @@ use anyhow::{anyhow, Context, Result};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use storage_strategist_core::{
-    collect_doctor_info, generate_recommendation_bundle, run_scan_with_callback, DoctorInfo,
-    RecommendationBundle, Report, ScanBackendKind, ScanOptions, ScanProgressEvent,
+    build_diagnostics_bundle, build_scenario_plan, collect_doctor_info,
+    generate_recommendation_bundle, run_scan_with_callback, write_diagnostics_bundle,
+    DiagnosticsBundle, DoctorInfo, RecommendationBundle, Report, ScanBackendKind, ScanOptions,
+    ScanProgressEvent, ScenarioPlan,
 };
 use uuid::Uuid;
 
@@ -42,6 +44,12 @@ pub struct ScanRequest {
     pub emit_progress_events: bool,
     #[serde(default = "default_progress_interval")]
     pub progress_interval_ms: u64,
+    #[serde(default = "default_incremental_cache")]
+    pub incremental_cache: bool,
+    #[serde(default)]
+    pub cache_dir: Option<PathBuf>,
+    #[serde(default = "default_cache_ttl_seconds")]
+    pub cache_ttl_seconds: u64,
 }
 
 fn default_dedupe_min_size() -> u64 {
@@ -50,6 +58,14 @@ fn default_dedupe_min_size() -> u64 {
 
 fn default_progress_interval() -> u64 {
     250
+}
+
+fn default_incremental_cache() -> bool {
+    true
+}
+
+fn default_cache_ttl_seconds() -> u64 {
+    900
 }
 
 impl Default for ScanRequest {
@@ -67,6 +83,9 @@ impl Default for ScanRequest {
             min_ratio: None,
             emit_progress_events: true,
             progress_interval_ms: default_progress_interval(),
+            incremental_cache: default_incremental_cache(),
+            cache_dir: None,
+            cache_ttl_seconds: default_cache_ttl_seconds(),
         }
     }
 }
@@ -145,6 +164,9 @@ pub fn start_scan(request: ScanRequest) -> Result<String> {
             scan_id: Some(thread_scan_id.clone()),
             emit_progress_events: request.emit_progress_events,
             progress_interval_ms: request.progress_interval_ms,
+            incremental_cache: request.incremental_cache,
+            cache_dir: request.cache_dir,
+            cache_ttl_seconds: request.cache_ttl_seconds,
             cancel_flag: Some(Arc::clone(&cancel_flag)),
             ..ScanOptions::default()
         };
@@ -247,6 +269,20 @@ pub fn load_report(path: impl AsRef<Path>) -> Result<Report> {
 
 pub fn generate_recommendations_from_report(report: &Report) -> RecommendationBundle {
     generate_recommendation_bundle(report)
+}
+
+pub fn plan_scenarios_from_report(report: &Report) -> ScenarioPlan {
+    build_scenario_plan(report)
+}
+
+pub fn export_diagnostics_bundle(
+    report: &Report,
+    output: impl AsRef<Path>,
+    source_report_path: Option<PathBuf>,
+) -> Result<DiagnosticsBundle> {
+    let bundle = build_diagnostics_bundle(report, source_report_path.as_deref());
+    write_diagnostics_bundle(&bundle, output)?;
+    Ok(bundle)
 }
 
 pub fn doctor() -> DoctorInfo {

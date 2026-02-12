@@ -1,6 +1,9 @@
+use std::collections::HashMap;
 use std::env;
+use std::process::Command;
 
 use crate::model::{DiskInfo, DiskKind, DiskStorageType, LocalityClass, PerformanceClass};
+use serde::Deserialize;
 
 #[derive(Debug, Clone)]
 pub struct DiskProbe {
@@ -11,6 +14,25 @@ pub struct DiskProbe {
     pub disk_kind: DiskKind,
     pub file_system: Option<String>,
     pub is_removable: bool,
+}
+
+#[derive(Debug, Clone, Default)]
+struct PlatformDiskHint {
+    vendor: Option<String>,
+    model: Option<String>,
+    interface: Option<String>,
+    rotational: Option<bool>,
+    confidence: f32,
+    source: String,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Default)]
+struct PlatformHintSeed {
+    vendor: Option<String>,
+    model: Option<String>,
+    interface: Option<String>,
+    rotational: Option<bool>,
 }
 
 pub fn detect_os_mount() -> Option<String> {
@@ -28,15 +50,24 @@ pub fn detect_os_mount() -> Option<String> {
 
 pub fn enrich_disks(probes: Vec<DiskProbe>) -> Vec<DiskInfo> {
     let os_mount = detect_os_mount();
+    let platform_hints = collect_platform_hints();
     let mut disks = probes
         .into_iter()
-        .map(|probe| enrich_disk(probe, os_mount.as_deref()))
+        .map(|probe| {
+            let hint_key = normalize_mount_for_hint_lookup(&probe.mount_point);
+            let hint = platform_hints.get(&hint_key);
+            enrich_disk(probe, os_mount.as_deref(), hint)
+        })
         .collect::<Vec<_>>();
     disks.sort_by(|a, b| a.mount_point.cmp(&b.mount_point));
     disks
 }
 
-fn enrich_disk(probe: DiskProbe, os_mount: Option<&str>) -> DiskInfo {
+fn enrich_disk(
+    probe: DiskProbe,
+    os_mount: Option<&str>,
+    platform_hint: Option<&PlatformDiskHint>,
+) -> DiskInfo {
     let fs_value = probe.file_system.clone().unwrap_or_default();
     let fs = fs_value.to_lowercase();
     let name = probe.name.to_lowercase();
@@ -44,17 +75,75 @@ fn enrich_disk(probe: DiskProbe, os_mount: Option<&str>) -> DiskInfo {
 
     let (locality_class, locality_confidence, locality_rationale) =
         classify_locality(&name, &mount, &fs);
-    let (interface, interface_note) = infer_interface(&name, &mount, &fs, probe.is_removable);
-    let (vendor, model, model_note) = infer_vendor_model(&probe.name);
+    let (mut interface, interface_note) = infer_interface(&name, &mount, &fs, probe.is_removable);
+    let (mut vendor, mut model, model_note) = infer_vendor_model(&probe.name);
+    let mut provider_notes = Vec::new();
 
-    let (storage_type, storage_note) = classify_storage_type(
+    if let Some(hint) = platform_hint {
+        if let Some(hint_interface) = normalize_interface_hint(hint.interface.as_deref()) {
+            interface = Some(hint_interface.to_string());
+            provider_notes.push(format!(
+                "OS provider ({}) supplied interface hint '{}' (confidence {:.2}).",
+                hint.source, hint_interface, hint.confidence
+            ));
+        }
+
+        if let Some(hint_vendor) = normalize_optional_field(hint.vendor.as_deref()) {
+            vendor = Some(hint_vendor.to_string());
+            provider_notes.push(format!(
+                "OS provider ({}) supplied vendor hint (confidence {:.2}).",
+                hint.source, hint.confidence
+            ));
+        }
+
+        if let Some(hint_model) = normalize_optional_field(hint.model.as_deref()) {
+            model = Some(hint_model.to_string());
+            provider_notes.push(format!(
+                "OS provider ({}) supplied model hint (confidence {:.2}).",
+                hint.source, hint.confidence
+            ));
+        }
+    }
+
+    let (mut storage_type, mut storage_note) = classify_storage_type(
         probe.disk_kind.clone(),
         locality_class.clone(),
         &name,
         interface.as_deref(),
         probe.is_removable,
     );
-    let (rotational, hybrid) = infer_rotation_and_hybrid(probe.disk_kind.clone(), &name);
+    let (mut rotational, hybrid) = infer_rotation_and_hybrid(probe.disk_kind.clone(), &name);
+
+    if matches!(storage_type, DiskStorageType::Unknown) {
+        if let Some(hint) = platform_hint {
+            match hint.rotational {
+                Some(true) => {
+                    storage_type = DiskStorageType::Hdd;
+                    storage_note =
+                        "OS provider inferred rotational media; classified as HDD.".to_string();
+                }
+                Some(false) => {
+                    storage_type = DiskStorageType::Ssd;
+                    storage_note =
+                        "OS provider inferred non-rotational media; classified as SSD.".to_string();
+                }
+                None => {}
+            }
+        }
+    }
+
+    if let Some(hint) = platform_hint {
+        if let Some(hint_rotational) = hint.rotational {
+            rotational = Some(hint_rotational);
+            provider_notes.push(format!(
+                "OS provider ({}) supplied rotational hint '{}' (confidence {:.2}).",
+                hint.source,
+                if hint_rotational { "true" } else { "false" },
+                hint.confidence
+            ));
+        }
+    }
+
     let (performance_class, performance_confidence, performance_rationale) =
         classify_performance(&storage_type, &locality_class);
 
@@ -68,6 +157,7 @@ fn enrich_disk(probe: DiskProbe, os_mount: Option<&str>) -> DiskInfo {
         interface_note,
         model_note,
     ];
+    metadata_notes.extend(provider_notes);
     metadata_notes.retain(|note| !note.is_empty());
 
     DiskInfo {
@@ -97,6 +187,371 @@ fn enrich_disk(probe: DiskProbe, os_mount: Option<&str>) -> DiskInfo {
         role_hint: Default::default(),
         target_role_eligibility: Vec::new(),
     }
+}
+
+fn collect_platform_hints() -> HashMap<String, PlatformDiskHint> {
+    if cfg!(test) {
+        return HashMap::new();
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        collect_windows_platform_hints()
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        collect_linux_platform_hints()
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "linux")))]
+    {
+        HashMap::new()
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[derive(Debug, Clone, Deserialize)]
+struct WindowsDiskBridgeRecord {
+    #[serde(default, alias = "mount", alias = "mountPoint")]
+    mount_point: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default, alias = "manufacturer")]
+    vendor: Option<String>,
+    #[serde(default, alias = "interfaceType")]
+    interface: Option<String>,
+    #[serde(default)]
+    rotational: Option<bool>,
+    #[serde(default, alias = "mediaType")]
+    media_type: Option<String>,
+}
+
+#[cfg(target_os = "windows")]
+fn collect_windows_platform_hints() -> HashMap<String, PlatformDiskHint> {
+    let script = r#"
+$ErrorActionPreference = 'SilentlyContinue'
+$records = @()
+$drives = Get-CimInstance Win32_DiskDrive
+foreach ($drive in $drives) {
+  $parts = @(Get-CimAssociatedInstance -InputObject $drive -ResultClassName Win32_DiskPartition)
+  foreach ($part in $parts) {
+    $logical = @(Get-CimAssociatedInstance -InputObject $part -ResultClassName Win32_LogicalDisk)
+    foreach ($ld in $logical) {
+      $rot = $null
+      if ($drive.MediaType -match 'SSD|Solid State') { $rot = $false }
+      elseif ($drive.MediaType -match 'HDD|Hard Disk|Fixed hard') { $rot = $true }
+      $records += [pscustomobject]@{
+        mount_point = "$($ld.DeviceID)\"
+        model = $drive.Model
+        vendor = $drive.Manufacturer
+        interface = $drive.InterfaceType
+        rotational = $rot
+        media_type = $drive.MediaType
+      }
+    }
+  }
+}
+$records | ConvertTo-Json -Compress
+"#;
+
+    let output = match Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            script,
+        ])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return HashMap::new(),
+    };
+
+    let records = parse_windows_bridge_records(&output.stdout);
+    if records.is_empty() {
+        return HashMap::new();
+    }
+
+    let mut hints = HashMap::new();
+    for record in records {
+        let Some(mount_point) = normalize_optional_field(record.mount_point.as_deref()) else {
+            continue;
+        };
+
+        let rotational = record
+            .rotational
+            .or_else(|| infer_rotational_from_media_type(record.media_type.as_deref()));
+        let interface = normalize_interface_hint(record.interface.as_deref()).map(str::to_string);
+        let vendor = normalize_optional_field(record.vendor.as_deref()).map(str::to_string);
+        let model = normalize_optional_field(record.model.as_deref()).map(str::to_string);
+
+        let known_fields = [interface.is_some(), rotational.is_some(), model.is_some()]
+            .iter()
+            .filter(|known| **known)
+            .count();
+        let confidence = (0.72 + (known_fields as f32 * 0.06)).min(0.9);
+
+        upsert_platform_hint(
+            &mut hints,
+            mount_point,
+            PlatformDiskHint {
+                vendor,
+                model,
+                interface,
+                rotational,
+                confidence,
+                source: "windows_wmi".to_string(),
+            },
+        );
+    }
+
+    hints
+}
+
+#[cfg(target_os = "windows")]
+fn parse_windows_bridge_records(raw: &[u8]) -> Vec<WindowsDiskBridgeRecord> {
+    if let Ok(records) = serde_json::from_slice::<Vec<WindowsDiskBridgeRecord>>(raw) {
+        return records;
+    }
+    if let Ok(record) = serde_json::from_slice::<WindowsDiskBridgeRecord>(raw) {
+        return vec![record];
+    }
+    Vec::new()
+}
+
+#[cfg(target_os = "windows")]
+fn infer_rotational_from_media_type(media_type: Option<&str>) -> Option<bool> {
+    let media_type = media_type?.to_ascii_lowercase();
+    if media_type.contains("ssd") || media_type.contains("solid state") {
+        return Some(false);
+    }
+    if media_type.contains("hdd") || media_type.contains("hard disk") {
+        return Some(true);
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Deserialize)]
+struct LinuxLsblkRoot {
+    #[serde(default)]
+    blockdevices: Vec<LinuxLsblkNode>,
+}
+
+#[cfg(target_os = "linux")]
+#[derive(Debug, Clone, Deserialize)]
+struct LinuxLsblkNode {
+    #[serde(default)]
+    mountpoint: Option<String>,
+    #[serde(default)]
+    mountpoints: Option<Vec<Option<String>>>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    vendor: Option<String>,
+    #[serde(default)]
+    tran: Option<String>,
+    #[serde(default)]
+    rota: Option<serde_json::Value>,
+    #[serde(default)]
+    children: Vec<LinuxLsblkNode>,
+}
+
+#[cfg(target_os = "linux")]
+fn collect_linux_platform_hints() -> HashMap<String, PlatformDiskHint> {
+    let output = match Command::new("lsblk")
+        .args(["-J", "-o", "MOUNTPOINT,MOUNTPOINTS,MODEL,VENDOR,ROTA,TRAN"])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return HashMap::new(),
+    };
+
+    let root = match serde_json::from_slice::<LinuxLsblkRoot>(&output.stdout) {
+        Ok(root) => root,
+        Err(_) => return HashMap::new(),
+    };
+
+    let mut hints = HashMap::new();
+    for device in root.blockdevices {
+        collect_linux_hints_recursive(&mut hints, &device, PlatformHintSeed::default());
+    }
+    hints
+}
+
+#[cfg(target_os = "linux")]
+fn collect_linux_hints_recursive(
+    hints: &mut HashMap<String, PlatformDiskHint>,
+    node: &LinuxLsblkNode,
+    seed: PlatformHintSeed,
+) {
+    let mut current = seed;
+    if let Some(model) = normalize_optional_field(node.model.as_deref()) {
+        current.model = Some(model.to_string());
+    }
+    if let Some(vendor) = normalize_optional_field(node.vendor.as_deref()) {
+        current.vendor = Some(vendor.to_string());
+    }
+    if let Some(interface) = normalize_interface_hint(node.tran.as_deref()) {
+        current.interface = Some(interface.to_string());
+    }
+    if let Some(rotational) = parse_rotational_hint(node.rota.as_ref()) {
+        current.rotational = Some(rotational);
+    }
+
+    for mount in extract_linux_mount_points(node) {
+        let known_fields = [
+            current.model.is_some(),
+            current.vendor.is_some(),
+            current.interface.is_some(),
+            current.rotational.is_some(),
+        ]
+        .iter()
+        .filter(|known| **known)
+        .count();
+        let confidence = (0.70 + (known_fields as f32 * 0.05)).min(0.9);
+
+        upsert_platform_hint(
+            hints,
+            mount.as_str(),
+            PlatformDiskHint {
+                vendor: current.vendor.clone(),
+                model: current.model.clone(),
+                interface: current.interface.clone(),
+                rotational: current.rotational,
+                confidence,
+                source: "linux_lsblk".to_string(),
+            },
+        );
+    }
+
+    for child in &node.children {
+        collect_linux_hints_recursive(hints, child, current.clone());
+    }
+}
+
+#[cfg(target_os = "linux")]
+fn extract_linux_mount_points(node: &LinuxLsblkNode) -> Vec<String> {
+    let mut out = Vec::new();
+    if let Some(mount) = normalize_optional_field(node.mountpoint.as_deref()) {
+        out.push(mount.to_string());
+    }
+    if let Some(mounts) = &node.mountpoints {
+        for mount in mounts {
+            if let Some(mount) = normalize_optional_field(mount.as_deref()) {
+                if !out.iter().any(|entry| entry == mount) {
+                    out.push(mount.to_string());
+                }
+            }
+        }
+    }
+    out
+}
+
+#[cfg(target_os = "linux")]
+fn parse_rotational_hint(value: Option<&serde_json::Value>) -> Option<bool> {
+    match value? {
+        serde_json::Value::Bool(flag) => Some(*flag),
+        serde_json::Value::Number(number) => number
+            .as_i64()
+            .map(|value| value != 0)
+            .or_else(|| number.as_u64().map(|value| value != 0)),
+        serde_json::Value::String(raw) => {
+            let normalized = raw.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "1" | "true" | "yes" => Some(true),
+                "0" | "false" | "no" => Some(false),
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+fn upsert_platform_hint(
+    hints: &mut HashMap<String, PlatformDiskHint>,
+    mount_point: &str,
+    candidate: PlatformDiskHint,
+) {
+    let key = normalize_mount_for_hint_lookup(mount_point);
+    if key.is_empty() {
+        return;
+    }
+
+    hints
+        .entry(key)
+        .and_modify(|current| {
+            if candidate.confidence > current.confidence {
+                *current = candidate.clone();
+            } else {
+                if current.vendor.is_none() && candidate.vendor.is_some() {
+                    current.vendor = candidate.vendor.clone();
+                }
+                if current.model.is_none() && candidate.model.is_some() {
+                    current.model = candidate.model.clone();
+                }
+                if current.interface.is_none() && candidate.interface.is_some() {
+                    current.interface = candidate.interface.clone();
+                }
+                if current.rotational.is_none() && candidate.rotational.is_some() {
+                    current.rotational = candidate.rotational;
+                }
+            }
+        })
+        .or_insert(candidate);
+}
+
+fn normalize_mount_for_hint_lookup(value: &str) -> String {
+    #[cfg(windows)]
+    {
+        normalize_windows_mount(value)
+    }
+
+    #[cfg(not(windows))]
+    {
+        normalize_unix_mount(value)
+    }
+}
+
+fn normalize_optional_field(value: Option<&str>) -> Option<&str> {
+    let value = value?.trim();
+    if value.is_empty() {
+        None
+    } else {
+        Some(value)
+    }
+}
+
+fn normalize_interface_hint(raw: Option<&str>) -> Option<&str> {
+    let raw = normalize_optional_field(raw)?.to_ascii_lowercase();
+    if raw.contains("nvme") {
+        return Some("nvme");
+    }
+    if raw.contains("usb") {
+        return Some("usb");
+    }
+    if raw.contains("sata")
+        || raw.contains("ata")
+        || raw.contains("sas")
+        || raw.contains("scsi")
+        || raw.contains("pcie")
+    {
+        return Some("sata");
+    }
+    if raw.contains("virtio") {
+        return Some("virtio");
+    }
+    if raw.contains("network")
+        || raw.contains("iscsi")
+        || raw.contains("nfs")
+        || raw.contains("smb")
+    {
+        return Some("network");
+    }
+    None
 }
 
 fn classify_locality(name: &str, mount: &str, fs: &str) -> (LocalityClass, f32, String) {

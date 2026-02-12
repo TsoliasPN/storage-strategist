@@ -11,6 +11,30 @@
       "forbidden_ids": [
         "consolidation-opportunity"
       ]
+    },
+    {
+      "name": "active-workload-fixture",
+      "report": "active-workload-report.json",
+      "expected_top_ids": [
+        "active-workload-placement",
+        "backup-gap"
+      ],
+      "forbidden_ids": [
+        "consolidation-opportunity",
+        "cloud-backed-target-exclusion"
+      ]
+    },
+    {
+      "name": "os-headroom-cloud-fixture",
+      "report": "os-headroom-cloud-report.json",
+      "expected_top_ids": [
+        "os-headroom",
+        "cloud-backed-target-exclusion"
+      ],
+      "forbidden_ids": [
+        "active-workload-placement",
+        "backup-gap"
+      ]
     }
   ]
 }

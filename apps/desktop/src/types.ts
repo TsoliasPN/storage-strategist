@@ -13,6 +13,9 @@ export interface ScanRequest {
   min_ratio?: number;
   emit_progress_events: boolean;
   progress_interval_ms: number;
+  incremental_cache?: boolean;
+  cache_dir?: string;
+  cache_ttl_seconds?: number;
 }
 
 export interface ScanProgressEvent {
@@ -141,4 +144,46 @@ export interface DoctorInfo {
 
 export interface RecommendationBundle {
   recommendations: Recommendation[];
+}
+
+export interface ScenarioRiskMix {
+  low: number;
+  medium: number;
+  high: number;
+}
+
+export interface ScenarioProjection {
+  scenario_id: string;
+  title: string;
+  strategy: "conservative" | "balanced" | "aggressive";
+  recommendation_ids: string[];
+  recommendation_count: number;
+  projected_space_saving_bytes: number;
+  risk_mix: ScenarioRiskMix;
+  blocked_recommendation_count: number;
+  notes: string[];
+}
+
+export interface ScenarioPlan {
+  generated_at: string;
+  scan_id: string;
+  assumptions: string[];
+  scenarios: ScenarioProjection[];
+}
+
+export interface DiagnosticsEnvironment {
+  os: string;
+  arch: string;
+  current_dir?: string;
+  os_mount?: string;
+  read_only_mode: boolean;
+  app_version: string;
+}
+
+export interface DiagnosticsBundle {
+  generated_at: string;
+  source_report_path?: string;
+  report: Report;
+  doctor: DoctorInfo;
+  environment: DiagnosticsEnvironment;
 }

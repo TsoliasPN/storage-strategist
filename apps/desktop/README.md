@@ -11,9 +11,11 @@ This app is the read-only review UI track for `storage-strategist`.
   - Usage
   - Categories
   - Duplicates
+  - Scenarios (read-only what-if planner)
   - Recommendations
   - Rule Trace
 - Doctor diagnostics panel.
+- Diagnostics bundle export action from Results.
 - No destructive operations.
 
 ## Local run

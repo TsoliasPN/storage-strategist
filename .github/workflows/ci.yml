@@ -39,6 +39,35 @@ jobs:
       - name: Verify provenance and license
         run: python3 scripts/check_compliance.py
 
+  evaluation_kpi:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run evaluation suite
+        run: |
+          cargo run -p storage-strategist -- eval --suite fixtures/eval-suite.json --output eval-result.json
+
+      - name: Enforce evaluation KPI thresholds
+        run: |
+          python3 scripts/check_eval_kpi_thresholds.py \
+            --input eval-result.json \
+            --min-precision-at-3 0.70 \
+            --max-contradiction-rate 0.05 \
+            --max-unsafe-recommendations 0
+
+      - name: Upload evaluation artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: evaluation-result
+          path: eval-result.json
+          if-no-files-found: warn
+
   desktop_ui_smoke:
     runs-on: ubuntu-latest
     defaults:

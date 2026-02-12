@@ -11,10 +11,13 @@
 
 - `crates/core`
   - scanner backends (`native`, `pdu_library`)
+  - incremental scan cache (key/signature/TTL best-effort path)
   - device/disk enrichment
   - categorization + disk role inference
   - duplicate detection
   - recommendation rules + policy invariants
+  - scenario planner (read-only what-if projections)
+  - diagnostics bundle generator
   - report schema (`report_version` currently `1.3.0`)
   - evaluator + markdown rendering + doctor diagnostics
 - `crates/cli`
@@ -31,6 +34,10 @@
 `ScanBackend` abstraction in `crates/core/src/scan.rs`:
 - `NativeBackend`: walkdir-based traversal and aggregation.
 - `PduLibraryBackend`: integrates `parallel-disk-usage` tree summaries via `FsTreeBuilder`, while retaining detailed native file-level stats for category/dedupe/recommendation pipeline.
+- Incremental cache (optional via `ScanOptions.incremental_cache`):
+  - cache key hashes roots + scan-shaping options + backend/report version
+  - cache hit requires matching root signatures and TTL window
+  - cache IO failures are downgraded to warnings and never fail the scan
 
 Backend parity support:
 - `compare_backends(options)` returns timing and delta metrics in `BackendParity`.
@@ -81,6 +88,11 @@ Role inference combines:
 - disk label/model signals
 - aggregated category scores
 
+OS-specific enrichment providers:
+- Windows: best-effort WMI (`Win32_DiskDrive` + partition/logical mapping) hints for model/vendor/interface/rotational signals
+- Linux: best-effort `lsblk -J` hints for mount-linked model/vendor/transport/rotational signals
+- When provider data is unavailable, heuristics remain the fallback and scan continues without failure
+
 ## Report Schema Evolution Strategy
 
 - `report_version` is semantic and additive by default.
@@ -104,6 +116,7 @@ UI constraints:
 - no move/delete/rename actions
 - advisory wording only
 - unsafe destination classes visually represented and excluded by policy
+- scenario planner and diagnostics export remain read-only support tooling
 
 ## Reliability and Error Handling
 
@@ -116,11 +129,12 @@ UI constraints:
 
 - `.github/workflows/ci.yml`: fmt + clippy (`-D warnings`) + tests + compliance checks + desktop UI smoke tests
 - `.github/workflows/bench.yml`: benchmark run + regression threshold check (15%)
-- `.github/workflows/desktop-package.yml`: manual Windows desktop packaging build
+- `.github/workflows/desktop-package.yml`: manual desktop packaging matrix (Windows/macOS/Linux) with optional signing env support
 - Evaluation KPI definitions (`crates/core/src/eval.rs`):
   - `precision_at_3`: top-3 recommendation hit ratio against case `expected_top_ids`, averaged over suite cases
   - `contradiction_rate`: fraction of cases with `contradiction_count > 0`
   - `unsafe_recommendations`: emitted recommendation count where `policy_safe == false`
+- KPI threshold enforcement script: `scripts/check_eval_kpi_thresholds.py`
 - AGPL/provenance governance:
   - `THIRD_PARTY_NOTICES.md`
   - `CODE_IMPORT_POLICY.md`

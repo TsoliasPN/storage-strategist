@@ -2,13 +2,25 @@ name: Desktop Package
 
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Optional release tag label for artifact naming
+        required: false
+        type: string
 
 jobs:
-  tauri_package_windows:
-    runs-on: windows-latest
+  tauri_package:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: apps/desktop
+    env:
+      TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,8 +33,24 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install Linux packaging dependencies
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
       - name: Install desktop dependencies
         run: npm install
+
+      - name: Capture build metadata
+        run: |
+          cargo --version > desktop-build-metadata.txt
+          node --version >> desktop-build-metadata.txt
+          npm --version >> desktop-build-metadata.txt
 
       - name: Build desktop application
         run: npm run tauri build
@@ -30,8 +58,12 @@ jobs:
       - name: Upload desktop build artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: desktop-tauri-windows
+          name: desktop-tauri-${{ matrix.os }}
           path: |
+            apps/desktop/desktop-build-metadata.txt
             apps/desktop/src-tauri/target/release/*.exe
+            apps/desktop/src-tauri/target/release/*.dmg
+            apps/desktop/src-tauri/target/release/*.AppImage
+            apps/desktop/src-tauri/target/release/*.deb
             apps/desktop/src-tauri/target/release/bundle
           if-no-files-found: warn
