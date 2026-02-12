@@ -1,0 +1,8 @@
+{
+  "iterations": 3,
+  "backend": "native",
+  "avg_elapsed_ms": 2186.6666666666665,
+  "avg_files": 5.0,
+  "avg_bytes": 20265.0,
+  "avg_throughput_mb_s": 0.008838205802731399
+}

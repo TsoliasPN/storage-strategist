@@ -35,6 +35,27 @@
         "active-workload-placement",
         "backup-gap"
       ]
+    },
+    {
+      "name": "games-library-fixture",
+      "report": "games-library-report.json",
+      "expected_top_ids": [
+        "active-workload-placement"
+      ],
+      "forbidden_ids": [
+        "backup-gap",
+        "risky-disk-D--"
+      ]
+    },
+    {
+      "name": "media-risky-fixture",
+      "report": "media-risky-report.json",
+      "expected_top_ids": [
+        "risky-disk-F--"
+      ],
+      "forbidden_ids": [
+        "active-workload-placement"
+      ]
     }
   ]
 }

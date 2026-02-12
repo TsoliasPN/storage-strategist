@@ -30,6 +30,18 @@ jobs:
       - name: Cargo test
         run: cargo test --workspace
 
+  backend_parity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run backend parity tests
+        run: cargo test --test parity_test -- --nocapture
+
   compliance:
     runs-on: ubuntu-latest
     steps:

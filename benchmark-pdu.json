@@ -1,0 +1,8 @@
+{
+  "iterations": 3,
+  "backend": "pdu_library",
+  "avg_elapsed_ms": 2079.3333333333335,
+  "avg_files": 5.0,
+  "avg_bytes": 20265.0,
+  "avg_throughput_mb_s": 0.009294426108675532
+}
