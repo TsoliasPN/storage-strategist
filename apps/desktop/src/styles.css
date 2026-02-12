@@ -130,6 +130,122 @@ button:disabled {
   background: #f9fcff;
 }
 
+.split-pane {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.list-pane,
+.inspector-pane {
+  min-width: 0;
+}
+
+.list-pane .scroll-block {
+  max-height: 540px;
+}
+
+.inspector-pane {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.select-card {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 1px solid #dbe8f3;
+  border-radius: 8px;
+  padding: 0.625rem;
+  margin-bottom: 0.5rem;
+  background: #ffffff;
+}
+
+.select-card.active {
+  border-color: #0f4c81;
+  background: #f2f8ff;
+  box-shadow: 0 0 0 1px rgba(15, 76, 129, 0.15);
+}
+
+.title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.title-row h3 {
+  margin: 0;
+}
+
+.meta-line {
+  color: #395773;
+  font-size: 0.86rem;
+}
+
+.truncate-2 {
+  margin-top: 0.35rem;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  padding: 0.1rem 0.5rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.risk-low {
+  background: #e8f8ec;
+  color: #1a6e2f;
+}
+
+.risk-medium {
+  background: #fff5df;
+  color: #7b5300;
+}
+
+.risk-high {
+  background: #ffe8e8;
+  color: #8b1f1f;
+}
+
+.status-emitted {
+  background: #e8f8ec;
+  color: #1a6e2f;
+}
+
+.status-rejected {
+  background: #ffe8e8;
+  color: #8b1f1f;
+}
+
+.status-skipped {
+  background: #eef2f7;
+  color: #42566e;
+}
+
+.detail-block {
+  border-top: 1px dashed #d4e1ee;
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+}
+
+.detail-block:first-of-type {
+  border-top: none;
+  margin-top: 0;
+  padding-top: 0;
+}
+
 .card {
   border: 1px solid #dbe8f3;
   border-radius: 8px;
@@ -178,5 +294,13 @@ td {
 
   .row {
     flex-direction: column;
+  }
+
+  .split-pane {
+    grid-template-columns: 1fr;
+  }
+
+  .list-pane .scroll-block {
+    max-height: 280px;
   }
 }

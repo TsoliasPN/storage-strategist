@@ -38,3 +38,26 @@ jobs:
 
       - name: Verify provenance and license
         run: python3 scripts/check_compliance.py
+
+  desktop_ui_smoke:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/desktop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: Install desktop dependencies
+        run: npm install
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run desktop UI smoke tests
+        run: npm run test:e2e

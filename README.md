@@ -88,9 +88,23 @@ npm run tauri dev
   - `clippy`
   - `test`
   - compliance checks
+  - desktop UI smoke tests (`apps/desktop`, Playwright)
 - `.github/workflows/bench.yml`
   - benchmark run
   - regression gate via `scripts/check_benchmark_regression.py` (15% threshold)
+- `.github/workflows/desktop-package.yml`
+  - manual desktop packaging build job (Windows)
+
+## Parity and KPI Gate Definitions
+
+- Backend parity gate (tracked for CI hardening):
+  - source: `compare_backends(...)` parity metadata (`scanned_files_delta`, `scanned_bytes_delta`, `tolerance_ratio`, `within_tolerance`)
+  - intent: fail when backend output drift exceeds configured tolerance on fixture scans
+- Evaluation KPI gates (tracked for CI hardening):
+  - `precision_at_3`: per-case hit ratio among top 3 recommendation IDs against `expected_top_ids`, averaged across suite cases
+  - `contradiction_rate`: fraction of suite cases where `contradiction_count > 0`
+  - `unsafe_recommendations`: count of emitted recommendations with `policy_safe == false`
+  - source: `storage-strategist eval` / `crates/core/src/eval.rs`
 
 ## Notes on `parallel-disk-usage` Inspiration
 

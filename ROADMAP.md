@@ -37,7 +37,7 @@ Key external findings from `parallel-disk-usage`:
 
 ### P1 (Weeks 5-8)
 
-7. [ ] **UI results workbench depth**
+7. [x] **UI results workbench depth**
    - richer recommendation inspector and policy trace views
    - duplicate/group drill-down interactions
 8. [ ] **Rule calibration loop**
@@ -115,8 +115,8 @@ UX constraints:
 6. [x] Add benchmark CI regression gate (15% initial threshold)
 7. [x] Add `crates/service`
 8. [x] Scaffold Tauri + React app and connect setup/scan flow
-9. [ ] Expand UI recommendation inspector and trace drilldowns
-10. [ ] Add UI e2e smoke tests and packaging jobs
+9. [x] Expand UI recommendation inspector and trace drilldowns
+10. [x] Add UI e2e smoke tests and packaging jobs
 
 ## Test Scenarios (Implemented + Planned)
 
@@ -126,11 +126,11 @@ Implemented:
 - policy blocking for active-placement into media-role targets
 - scan exclude matching (glob + substring fallback)
 - fixture-based recommendation evaluation
+- desktop UI smoke tests for `setup -> scanning -> results -> doctor` flow (Playwright)
 
 Planned next:
 - backend parity fixture assertions (`native` vs `pdu_library`)
 - permission continuation stress fixtures
-- UI smoke tests for setup/scanning/results rendering
 
 ## Assumptions and Defaults
 
@@ -139,3 +139,60 @@ Planned next:
 - `native` remains default scanner until parity/perf criteria are tightened.
 - Performance regression threshold starts at 15% and can be tightened later.
 - First UI release prioritizes trust/explainability over automation.
+
+## Roadmap Continuation (Post-90-Day)
+
+### P3 (Weeks 13-16)
+
+13. [ ] **Backend parity CI gate**
+    - add fixture-based parity workflow for representative trees
+    - fail CI when summary deltas exceed agreed tolerances
+14. [ ] **Performance promotion criteria**
+    - collect multi-run baseline for `native` and `pdu_library`
+    - tighten regression threshold from 15% to 10% after variance stabilizes
+15. [ ] **Default backend decision checkpoint**
+    - switch default to `pdu_library` only after parity + perf criteria pass on supported OS matrix
+    - keep explicit `native` override as fallback through the next minor release
+
+### P4 (Weeks 17-20)
+
+16. [ ] **Recommendation calibration expansion**
+    - add fixtures for media-heavy, game-library, mixed SSD/HDD, and cloud-backed profiles
+    - persist KPI baselines for regression comparison
+17. [ ] **Quality gates in CI**
+    - enforce `precision@3`, contradiction rate, and unsafe-target count thresholds
+    - publish evaluation artifacts on failure for quick triage
+18. [ ] **UI explainability depth**
+    - add recommendation inspector panels (evidence, blocked rules, target eligibility reasons)
+    - add rule trace filtering by status (`Emitted`, `Rejected`, `Skipped`)
+
+### P5 (Weeks 21-24)
+
+19. [ ] **Desktop release hardening**
+    - signed installers for Windows/macOS/Linux
+    - reproducible build metadata and release notes automation
+20. [ ] **Diagnostics bundle workflow**
+    - export report, warnings, doctor output, and environment metadata bundle
+    - add UI affordance for support-friendly bundle discovery
+21. [ ] **Docs and support matrix**
+    - publish filesystem/platform support matrix and known constraints
+    - document report schema compatibility and upgrade guidance
+
+## Exit Criteria for Upcoming Milestones
+
+- `v1.4` candidate:
+  - parity fixture gate enabled in CI
+  - evaluation KPI thresholds enforced
+  - recommendation inspector + trace drilldowns shipped
+- `v1.5` candidate:
+  - signed desktop installers on primary platforms
+  - diagnostics bundle workflow shipped
+  - default backend decision documented (`native` vs `pdu_library`)
+
+## Immediate Next Sprint (Weeks 13-14)
+
+1. [ ] Add parity fixture assertions for `native` vs `pdu_library`.
+2. [ ] Add CI parity/eval artifact jobs with fail thresholds.
+3. [x] Implement results-tab recommendation inspector detail panes.
+4. [x] Add desktop e2e smoke tests for `setup -> scanning -> results -> doctor`.
+5. [x] Update `README.md` and `ARCHITECTURE.md` with parity gate/KPI definitions.

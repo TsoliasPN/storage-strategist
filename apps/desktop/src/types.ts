@@ -51,7 +51,14 @@ export interface Recommendation {
   policy_safe: boolean;
   policy_rules_applied: string[];
   policy_rules_blocked: string[];
+  estimated_impact: EstimatedImpact;
   risk_level: RiskLevel;
+}
+
+export interface EstimatedImpact {
+  space_saving_bytes?: number | null;
+  performance?: string | null;
+  risk_notes?: string | null;
 }
 
 export interface PathStats {
@@ -78,8 +85,17 @@ export interface DuplicateGroup {
 
 export interface RuleTrace {
   rule_id: string;
-  status: string;
+  status: "emitted" | "skipped" | "rejected";
   detail: string;
+  recommendation_id?: string | null;
+  confidence?: number | null;
+}
+
+export interface PolicyDecision {
+  policy_id: string;
+  recommendation_id: string;
+  action: "allowed" | "blocked";
+  rationale: string;
 }
 
 export interface DiskRoleHint {
@@ -108,6 +124,7 @@ export interface Report {
   categories?: CategorySuggestion[];
   duplicates?: DuplicateGroup[];
   recommendations: Recommendation[];
+  policy_decisions?: PolicyDecision[];
   rule_traces?: RuleTrace[];
   warnings: string[];
 }

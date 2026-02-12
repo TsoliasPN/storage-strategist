@@ -36,6 +36,11 @@ Backend parity support:
 - `compare_backends(options)` returns timing and delta metrics in `BackendParity`.
 - Used by CLI `parity` command and future CI fixture parity gates.
 
+Parity gate definition (for CI hardening):
+- evaluate `BackendParity.within_tolerance` on fixture scans
+- tolerance derived from `BackendParity.tolerance_ratio`
+- key drift signals: `scanned_files_delta`, `scanned_bytes_delta`
+
 ## Event and Session Model
 
 Schema types:
@@ -109,8 +114,13 @@ UI constraints:
 
 ## CI and Governance
 
-- `.github/workflows/ci.yml`: fmt + clippy (`-D warnings`) + tests + compliance checks
+- `.github/workflows/ci.yml`: fmt + clippy (`-D warnings`) + tests + compliance checks + desktop UI smoke tests
 - `.github/workflows/bench.yml`: benchmark run + regression threshold check (15%)
+- `.github/workflows/desktop-package.yml`: manual Windows desktop packaging build
+- Evaluation KPI definitions (`crates/core/src/eval.rs`):
+  - `precision_at_3`: top-3 recommendation hit ratio against case `expected_top_ids`, averaged over suite cases
+  - `contradiction_rate`: fraction of cases with `contradiction_count > 0`
+  - `unsafe_recommendations`: emitted recommendation count where `policy_safe == false`
 - AGPL/provenance governance:
   - `THIRD_PARTY_NOTICES.md`
   - `CODE_IMPORT_POLICY.md`

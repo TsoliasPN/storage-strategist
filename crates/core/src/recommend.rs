@@ -1,6 +1,8 @@
 use std::collections::{HashMap, HashSet};
 use std::path::Path;
 
+use serde::{Deserialize, Serialize};
+
 use crate::model::{
     Category, DiskInfo, DiskStorageType, DuplicateIntentLabel, EstimatedImpact, LocalityClass,
     PerformanceClass, Recommendation, Report, RiskLevel, RuleTrace, RuleTraceStatus,
@@ -10,6 +12,7 @@ use crate::policy::enforce_recommendation_policies;
 const OS_HEADROOM_MIN_RATIO: f64 = 0.15;
 const MIN_SOURCE_SCAN_COVERAGE_RATIO: f64 = 0.35;
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct RecommendationBundle {
     pub recommendations: Vec<Recommendation>,
     pub rule_traces: Vec<RuleTrace>,

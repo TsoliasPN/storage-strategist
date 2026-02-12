@@ -12,7 +12,9 @@ import {
 } from "./api";
 import type {
   DoctorInfo,
+  PolicyDecision,
   Report,
+  RuleTrace,
   ScanProgressEvent,
   ScanRequest,
   ScanSessionSnapshot,
@@ -28,6 +30,36 @@ type ResultTab =
   | "rule-trace";
 
 const DEFAULT_OUTPUT = "storage-strategist-report.json";
+
+type RuleTraceFilterStatus = "all" | "emitted" | "rejected" | "skipped";
+
+const RULE_TRACE_STATUS_OPTIONS: RuleTraceFilterStatus[] = [
+  "all",
+  "emitted",
+  "rejected",
+  "skipped",
+];
+
+function formatBytes(bytes: number | null | undefined): string {
+  if (bytes === null || bytes === undefined || bytes <= 0) {
+    return "n/a";
+  }
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(value >= 100 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function formatConfidence(confidence: number | null | undefined): string {
+  if (confidence === null || confidence === undefined) {
+    return "n/a";
+  }
+  return `${(confidence * 100).toFixed(1)}%`;
+}
 
 function App() {
   const [screen, setScreen] = useState<Screen>("setup");
@@ -48,6 +80,9 @@ function App() {
   const [report, setReport] = useState<Report | null>(null);
   const [doctorInfo, setDoctorInfo] = useState<DoctorInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [selectedRecommendationId, setSelectedRecommendationId] = useState<string | null>(null);
+  const [traceStatusFilter, setTraceStatusFilter] = useState<RuleTraceFilterStatus>("all");
+  const [traceRecommendationFilter, setTraceRecommendationFilter] = useState<string>("all");
 
   useEffect(() => {
     if (screen !== "scanning" || !scanId) {
@@ -84,7 +119,11 @@ function App() {
             return;
           }
 
-          setReport({ ...loaded, recommendations: bundle.recommendations });
+          const nextReport = { ...loaded, recommendations: bundle.recommendations };
+          setReport(nextReport);
+          setSelectedRecommendationId(nextReport.recommendations[0]?.id ?? null);
+          setTraceStatusFilter("all");
+          setTraceRecommendationFilter("all");
           setTab("recommendations");
           setScreen("results");
         }
@@ -117,6 +156,90 @@ function App() {
     () => (events.length > 0 ? events[events.length - 1] : null),
     [events]
   );
+
+  useEffect(() => {
+    if (!report) {
+      setSelectedRecommendationId(null);
+      setTraceRecommendationFilter("all");
+      return;
+    }
+
+    const hasCurrentSelection =
+      selectedRecommendationId !== null &&
+      report.recommendations.some((recommendation) => recommendation.id === selectedRecommendationId);
+
+    if (!hasCurrentSelection) {
+      setSelectedRecommendationId(report.recommendations[0]?.id ?? null);
+    }
+
+    if (
+      traceRecommendationFilter !== "all" &&
+      !report.recommendations.some((recommendation) => recommendation.id === traceRecommendationFilter)
+    ) {
+      setTraceRecommendationFilter("all");
+    }
+  }, [report, selectedRecommendationId, traceRecommendationFilter]);
+
+  const policyDecisions = useMemo(
+    () => (report?.policy_decisions ?? []) as PolicyDecision[],
+    [report]
+  );
+
+  const selectedRecommendation = useMemo(() => {
+    if (!report || !selectedRecommendationId) {
+      return null;
+    }
+    return (
+      report.recommendations.find((recommendation) => recommendation.id === selectedRecommendationId) ?? null
+    );
+  }, [report, selectedRecommendationId]);
+
+  const selectedRecommendationPolicyDecisions = useMemo(() => {
+    if (!selectedRecommendation) {
+      return [];
+    }
+    return policyDecisions.filter(
+      (decision) => decision.recommendation_id === selectedRecommendation.id
+    );
+  }, [policyDecisions, selectedRecommendation]);
+
+  const selectedRecommendationRuleTraces = useMemo(() => {
+    if (!selectedRecommendation) {
+      return [];
+    }
+    return (report?.rule_traces ?? []).filter(
+      (trace) => trace.recommendation_id === selectedRecommendation.id
+    );
+  }, [report, selectedRecommendation]);
+
+  const selectedTargetDisk = useMemo(() => {
+    if (!report || !selectedRecommendation?.target_mount) {
+      return null;
+    }
+    return (
+      report.disks.find((disk) => disk.mount_point === selectedRecommendation.target_mount) ?? null
+    );
+  }, [report, selectedRecommendation]);
+
+  const ruleTraceCounts = useMemo(() => {
+    const traces = report?.rule_traces ?? [];
+    return {
+      all: traces.length,
+      emitted: traces.filter((trace) => trace.status === "emitted").length,
+      rejected: traces.filter((trace) => trace.status === "rejected").length,
+      skipped: traces.filter((trace) => trace.status === "skipped").length,
+    };
+  }, [report]);
+
+  const filteredRuleTraces = useMemo(() => {
+    const traces = (report?.rule_traces ?? []) as RuleTrace[];
+    return traces.filter((trace) => {
+      const statusMatches = traceStatusFilter === "all" || trace.status === traceStatusFilter;
+      const recommendationMatches =
+        traceRecommendationFilter === "all" || trace.recommendation_id === traceRecommendationFilter;
+      return statusMatches && recommendationMatches;
+    });
+  }, [report, traceStatusFilter, traceRecommendationFilter]);
 
   const start = async () => {
     setError(null);
@@ -194,6 +317,11 @@ function App() {
         "Directory picker unavailable in this environment. Enter paths manually."
       );
     }
+  };
+
+  const focusRecommendation = (recommendationId: string) => {
+    setSelectedRecommendationId(recommendationId);
+    setTab("recommendations");
   };
 
   return (
@@ -433,32 +561,246 @@ function App() {
           ) : null}
 
           {tab === "recommendations" ? (
-            <div className="scroll-block">
-              {report.recommendations.map((recommendation) => (
-                <article key={recommendation.id} className="card">
-                  <h3>{recommendation.title}</h3>
-                  <p>{recommendation.rationale}</p>
-                  <p>
-                    risk {recommendation.risk_level} | confidence {(recommendation.confidence * 100).toFixed(1)}%
-                  </p>
-                  <p>target {recommendation.target_mount ?? "none"}</p>
-                  <p>policy applied: {recommendation.policy_rules_applied.join(", ") || "none"}</p>
-                  <p>policy blocked: {recommendation.policy_rules_blocked.join(", ") || "none"}</p>
-                </article>
-              ))}
+            <div className="split-pane">
+              <div className="list-pane">
+                <h3>Recommendations ({report.recommendations.length})</h3>
+                <div className="scroll-block">
+                  {report.recommendations.length === 0 ? (
+                    <p className="muted">No recommendations were produced for this report.</p>
+                  ) : null}
+                  {report.recommendations.map((recommendation) => {
+                    const isActive = recommendation.id === selectedRecommendationId;
+                    return (
+                      <button
+                        key={recommendation.id}
+                        className={`select-card ${isActive ? "active" : ""}`}
+                        onClick={() => setSelectedRecommendationId(recommendation.id)}
+                      >
+                        <div className="title-row">
+                          <strong>{recommendation.title}</strong>
+                          <span className={`badge risk-${recommendation.risk_level}`}>
+                            {recommendation.risk_level}
+                          </span>
+                        </div>
+                        <p className="meta-line">
+                          confidence {formatConfidence(recommendation.confidence)} | policy{" "}
+                          {recommendation.policy_safe ? "safe" : "blocked"}
+                        </p>
+                        <p className="truncate-2">{recommendation.rationale}</p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="inspector-pane">
+                {!selectedRecommendation ? (
+                  <article className="card">
+                    <h3>Recommendation Inspector</h3>
+                    <p className="muted">Select a recommendation to inspect evidence and policy traces.</p>
+                  </article>
+                ) : (
+                  <>
+                    <article className="card">
+                      <div className="title-row">
+                        <h3>{selectedRecommendation.title}</h3>
+                        <span className={`badge risk-${selectedRecommendation.risk_level}`}>
+                          {selectedRecommendation.risk_level}
+                        </span>
+                      </div>
+                      <p>{selectedRecommendation.rationale}</p>
+                      <p>
+                        ID <code>{selectedRecommendation.id}</code>
+                      </p>
+                      <p>
+                        confidence {formatConfidence(selectedRecommendation.confidence)} | target{" "}
+                        {selectedRecommendation.target_mount ?? "none"}
+                      </p>
+                      <p>policy safe {selectedRecommendation.policy_safe ? "yes" : "no"}</p>
+                      <p>
+                        policy applied:{" "}
+                        {selectedRecommendation.policy_rules_applied.length > 0
+                          ? selectedRecommendation.policy_rules_applied.join(", ")
+                          : "none"}
+                      </p>
+                      <p>
+                        policy blocked:{" "}
+                        {selectedRecommendation.policy_rules_blocked.length > 0
+                          ? selectedRecommendation.policy_rules_blocked.join(", ")
+                          : "none"}
+                      </p>
+                    </article>
+
+                    <article className="card">
+                      <h3>Estimated Impact</h3>
+                      <p>
+                        space saving {formatBytes(selectedRecommendation.estimated_impact.space_saving_bytes)}
+                      </p>
+                      <p>
+                        performance note {selectedRecommendation.estimated_impact.performance ?? "none"}
+                      </p>
+                      <p>risk notes {selectedRecommendation.estimated_impact.risk_notes ?? "none"}</p>
+                    </article>
+
+                    <article className="card">
+                      <h3>Policy Decisions ({selectedRecommendationPolicyDecisions.length})</h3>
+                      {selectedRecommendationPolicyDecisions.length === 0 ? (
+                        <p className="muted">No policy decisions were recorded for this recommendation.</p>
+                      ) : null}
+                      {selectedRecommendationPolicyDecisions.map((decision, index) => (
+                        <div key={`${decision.policy_id}-${index}`} className="detail-block">
+                          <p>
+                            <strong>{decision.policy_id}</strong>{" "}
+                            <span
+                              className={`badge ${
+                                decision.action === "allowed" ? "status-emitted" : "status-rejected"
+                              }`}
+                            >
+                              {decision.action}
+                            </span>
+                          </p>
+                          <p>{decision.rationale}</p>
+                        </div>
+                      ))}
+                    </article>
+
+                    <article className="card">
+                      <h3>Linked Rule Traces ({selectedRecommendationRuleTraces.length})</h3>
+                      {selectedRecommendationRuleTraces.length === 0 ? (
+                        <p className="muted">No linked traces were found.</p>
+                      ) : null}
+                      {selectedRecommendationRuleTraces.map((trace, index) => (
+                        <div key={`${trace.rule_id}-${index}`} className="detail-block">
+                          <p>
+                            <strong>{trace.rule_id}</strong>{" "}
+                            <span className={`badge status-${trace.status}`}>{trace.status}</span>
+                          </p>
+                          <p>{trace.detail}</p>
+                          <p>confidence {formatConfidence(trace.confidence)}</p>
+                        </div>
+                      ))}
+                      {selectedRecommendationRuleTraces.length > 0 ? (
+                        <div className="row end">
+                          <button
+                            onClick={() => {
+                              setTraceRecommendationFilter(selectedRecommendation.id);
+                              setTraceStatusFilter("all");
+                              setTab("rule-trace");
+                            }}
+                          >
+                            Open in Rule Trace
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+
+                    {selectedTargetDisk ? (
+                      <article className="card">
+                        <h3>Target Eligibility Context</h3>
+                        <p>
+                          {selectedTargetDisk.mount_point} | role {selectedTargetDisk.role_hint.role} | locality{" "}
+                          {selectedTargetDisk.locality_class}
+                        </p>
+                        <p>
+                          eligible for local target {selectedTargetDisk.eligible_for_local_target ? "yes" : "no"}
+                        </p>
+                        <p>
+                          ineligible reasons:{" "}
+                          {selectedTargetDisk.ineligible_reasons.length > 0
+                            ? selectedTargetDisk.ineligible_reasons.join("; ")
+                            : "none"}
+                        </p>
+                      </article>
+                    ) : null}
+                  </>
+                )}
+              </div>
             </div>
           ) : null}
 
           {tab === "rule-trace" ? (
-            <div className="scroll-block">
-              {(report.rule_traces ?? []).map((trace, index) => (
-                <article key={`${trace.rule_id}-${index}`} className="card">
-                  <h3>{trace.rule_id}</h3>
-                  <p>{trace.status}</p>
-                  <p>{trace.detail}</p>
-                </article>
-              ))}
-            </div>
+            <>
+              <div className="row two-col">
+                <label>
+                  Status
+                  <select
+                    value={traceStatusFilter}
+                    onChange={(event) =>
+                      setTraceStatusFilter(event.target.value as RuleTraceFilterStatus)
+                    }
+                  >
+                    {RULE_TRACE_STATUS_OPTIONS.map((status) => (
+                      <option key={status} value={status}>
+                        {status} ({ruleTraceCounts[status]})
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Recommendation
+                  <select
+                    value={traceRecommendationFilter}
+                    onChange={(event) => setTraceRecommendationFilter(event.target.value)}
+                  >
+                    <option value="all">all recommendations</option>
+                    {report.recommendations.map((recommendation) => (
+                      <option key={recommendation.id} value={recommendation.id}>
+                        {recommendation.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="row">
+                <button
+                  onClick={() => {
+                    setTraceStatusFilter("all");
+                    setTraceRecommendationFilter("all");
+                  }}
+                >
+                  Reset Filters
+                </button>
+                {selectedRecommendation ? (
+                  <button onClick={() => setTraceRecommendationFilter(selectedRecommendation.id)}>
+                    Focus Selected Recommendation
+                  </button>
+                ) : null}
+              </div>
+
+              <div className="scroll-block">
+                {filteredRuleTraces.length === 0 ? (
+                  <p className="muted">No rule traces match the current filters.</p>
+                ) : null}
+                {filteredRuleTraces.map((trace, index) => {
+                  const linkedRecommendation =
+                    trace.recommendation_id === null || trace.recommendation_id === undefined
+                      ? null
+                      : report.recommendations.find(
+                          (recommendation) => recommendation.id === trace.recommendation_id
+                        ) ?? null;
+
+                  return (
+                    <article key={`${trace.rule_id}-${index}`} className="card">
+                      <div className="title-row">
+                        <h3>{trace.rule_id}</h3>
+                        <span className={`badge status-${trace.status}`}>{trace.status}</span>
+                      </div>
+                      <p>{trace.detail}</p>
+                      <p>confidence {formatConfidence(trace.confidence)}</p>
+                      <p>recommendation {trace.recommendation_id ?? "none"}</p>
+                      {linkedRecommendation ? (
+                        <div className="row end">
+                          <button onClick={() => focusRecommendation(linkedRecommendation.id)}>
+                            Open Recommendation Inspector
+                          </button>
+                        </div>
+                      ) : null}
+                    </article>
+                  );
+                })}
+              </div>
+            </>
           ) : null}
         </section>
       ) : null}
