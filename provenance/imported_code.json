@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "imports": [
+    {
+      "local_path": "crates/core/src/scan.rs",
+      "origin_project": "squirreldisk",
+      "origin_repo_path": "F:/repos/oss/squirreldisk",
+      "origin_file": "src-tauri/src/scan.rs",
+      "origin_license": "AGPL-3.0",
+      "reuse_type": "derived",
+      "notes": "Derived pseudo/system mount filtering and progress-compatible backend behavior. No destructive actions reused.",
+      "recorded_at": "2026-02-11"
+    }
+  ]
+}

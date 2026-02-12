@@ -1,0 +1,30 @@
+name: Benchmark
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  benchmark:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Run benchmark sample
+        run: |
+          cargo run -p storage-strategist -- benchmark --paths fixtures --max-depth 3 --iterations 2 --backend native --output benchmark-result.json
+
+      - name: Enforce benchmark regression threshold
+        run: |
+          python3 scripts/check_benchmark_regression.py --baseline fixtures/benchmark-baseline.json --current benchmark-result.json --max-regression 0.15
+
+      - name: Upload benchmark result
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-result
+          path: benchmark-result.json

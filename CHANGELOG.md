@@ -1,0 +1,48 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on Keep a Changelog, and this project adheres to Semantic Versioning.
+
+## [Unreleased]
+
+### Added
+- AGPL compliance framework:
+  - `THIRD_PARTY_NOTICES.md`
+  - `CODE_IMPORT_POLICY.md`
+  - `provenance/imported_code.json`
+  - `scripts/check_compliance.py`
+- CI workflow with quality and compliance gates.
+- Scanner backend abstraction with `native` and `pdu`-compatible modes.
+- Pseudo/system mount filtering for auto-discovered roots.
+- Report schema additions:
+  - scan backend/progress/min_ratio
+  - `scan_metrics`
+  - recommendation `target_mount` and `policy_safe`
+  - `policy_decisions`
+  - `rule_traces`
+- Policy invariant module to block unsafe recommendation targets.
+- Fixture evaluator command (`eval`) and benchmark command (`benchmark`).
+- Service crate (`crates/service`) with scan session/event APIs.
+- `scan_id`, `scan_progress_summary`, and backend parity metadata in report schema.
+- Disk role inference (`DiskRole`, `DiskRoleHint`) and role-based target eligibility fields.
+- Recommendation policy rule tracking fields:
+  - `policy_rules_applied`
+  - `policy_rules_blocked`
+- Role-aware recommendation safety policy (blocks active-placement into media/archive/backup roles).
+- CLI backend parity command (`parity`).
+- Desktop UI scaffold (`apps/desktop`) using Tauri + React (read-only).
+- Benchmark regression workflow (`.github/workflows/bench.yml`) and threshold script (`scripts/check_benchmark_regression.py`).
+- Benchmark baseline fixture (`fixtures/benchmark-baseline.json`).
+
+### Changed
+- Repository license migrated to `AGPL-3.0-or-later`.
+- Report schema version bumped to `1.2.0` with additive fields.
+- Report schema version bumped to `1.3.0` with additive fields for scan sessions, parity, and role metadata.
+- Recommendation engine now returns traceable bundle output before policy enforcement.
+- README/ARCHITECTURE/ROADMAP updated for AGPL workflow and new commands.
+- CLI backend naming standardized to `pdu_library` (`pdu` alias supported).
+
+### Fixed
+- Recommendation dedup/contradiction handling now blocks duplicate recommendation IDs.
+- Cloud-backed target safety enforcement is now explicit in policy decisions.

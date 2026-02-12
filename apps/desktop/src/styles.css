@@ -1,0 +1,182 @@
+:root {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  line-height: 1.35;
+  color: #102336;
+  background: radial-gradient(circle at top right, #f0f7ff, #ffffff 40%, #f5f8fc);
+}
+
+body {
+  margin: 0;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
+
+.app-shell {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 1rem;
+}
+
+.sub {
+  margin: 0.25rem 0 0;
+  color: #395773;
+}
+
+.header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.panel {
+  background: #ffffff;
+  border: 1px solid #d9e6f2;
+  border-radius: 12px;
+  padding: 1rem;
+  box-shadow: 0 8px 30px rgba(16, 35, 54, 0.08);
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.row.end {
+  justify-content: flex-end;
+}
+
+.row.two-col label {
+  flex: 1 1 320px;
+}
+
+input,
+select,
+button {
+  border: 1px solid #b5cbdf;
+  border-radius: 8px;
+  padding: 0.5rem 0.625rem;
+}
+
+button {
+  background: #edf5ff;
+  cursor: pointer;
+}
+
+button.primary {
+  background: #0f4c81;
+  color: #ffffff;
+  border-color: #0f4c81;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.list {
+  list-style: none;
+  margin: 0.5rem 0;
+  padding: 0;
+  border: 1px solid #d9e6f2;
+  border-radius: 8px;
+}
+
+.list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid #e4edf5;
+}
+
+.list li:first-child {
+  border-top: none;
+}
+
+.list.compact li {
+  font-size: 0.92rem;
+}
+
+.muted {
+  color: #567188;
+}
+
+.inline-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.progress-log,
+.scroll-block {
+  max-height: 280px;
+  overflow: auto;
+  border: 1px solid #d9e6f2;
+  border-radius: 8px;
+  padding: 0.5rem;
+  background: #f9fcff;
+}
+
+.card {
+  border: 1px solid #dbe8f3;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin-bottom: 0.5rem;
+  background: #ffffff;
+}
+
+.tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0.75rem 0;
+}
+
+.tabs button.active {
+  background: #0f4c81;
+  color: #fff;
+  border-color: #0f4c81;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+th,
+td {
+  border: 1px solid #d8e5f0;
+  padding: 0.5rem;
+  text-align: left;
+  font-size: 0.9rem;
+}
+
+.error {
+  background: #ffe8e8;
+  border: 1px solid #f2bcbc;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+@media (max-width: 860px) {
+  .header {
+    flex-direction: column;
+  }
+
+  .row {
+    flex-direction: column;
+  }
+}

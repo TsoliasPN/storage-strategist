@@ -1,0 +1,284 @@
+{
+  "report_version": "1.2.0",
+  "generated_at": "2026-02-11T00:00:00Z",
+  "scan": {
+    "roots": [
+      "C:\\",
+      "D:\\",
+      "J:\\"
+    ],
+    "max_depth": null,
+    "excludes": [],
+    "dedupe": true,
+    "dedupe_min_size": 1048576,
+    "dry_run": true,
+    "backend": "native",
+    "progress": false,
+    "min_ratio": null
+  },
+  "scan_metrics": {
+    "backend": "native",
+    "elapsed_ms": 1200,
+    "scanned_roots": 3,
+    "scanned_files": 275000,
+    "scanned_directories": 19000,
+    "scanned_bytes": 1200000000000,
+    "permission_denied_warnings": 0,
+    "contradiction_count": 0
+  },
+  "disks": [
+    {
+      "name": "System",
+      "mount_point": "C:\\",
+      "total_space_bytes": 1000000000000,
+      "free_space_bytes": 650000000000,
+      "disk_kind": "ssd",
+      "file_system": "ntfs",
+      "storage_type": "ssd",
+      "locality_class": "local_physical",
+      "locality_confidence": 0.8,
+      "locality_rationale": "Physical local disk.",
+      "is_os_drive": true,
+      "is_removable": false,
+      "vendor": "Samsung",
+      "model": "Samsung SSD",
+      "interface": "nvme",
+      "rotational": false,
+      "hybrid": false,
+      "performance_class": "fast",
+      "performance_confidence": 0.9,
+      "performance_rationale": "SSD/NVMe local disk.",
+      "eligible_for_local_target": false,
+      "ineligible_reasons": [
+        "OS/system drive is excluded from optimization targets by default."
+      ],
+      "metadata_notes": [
+        "Classified as local physical storage."
+      ]
+    },
+    {
+      "name": "Data",
+      "mount_point": "D:\\",
+      "total_space_bytes": 3000000000000,
+      "free_space_bytes": 1000000000000,
+      "disk_kind": "hdd",
+      "file_system": "ntfs",
+      "storage_type": "hdd",
+      "locality_class": "local_physical",
+      "locality_confidence": 0.8,
+      "locality_rationale": "Physical local disk.",
+      "is_os_drive": false,
+      "is_removable": false,
+      "vendor": null,
+      "model": "Data",
+      "interface": null,
+      "rotational": true,
+      "hybrid": false,
+      "performance_class": "slow",
+      "performance_confidence": 0.7,
+      "performance_rationale": "HDD local disk.",
+      "eligible_for_local_target": true,
+      "ineligible_reasons": [],
+      "metadata_notes": [
+        "sysinfo reported this disk as HDD."
+      ]
+    },
+    {
+      "name": "takjar@gmail.com - Google Drive",
+      "mount_point": "J:\\",
+      "total_space_bytes": 204000000000,
+      "free_space_bytes": 10300000000,
+      "disk_kind": "unknown",
+      "file_system": "google",
+      "storage_type": "cloud_backed",
+      "locality_class": "cloud_backed",
+      "locality_confidence": 0.95,
+      "locality_rationale": "Cloud-provider indicators detected.",
+      "is_os_drive": false,
+      "is_removable": false,
+      "vendor": null,
+      "model": "takjar@gmail.com - Google Drive",
+      "interface": "network",
+      "rotational": null,
+      "hybrid": null,
+      "performance_class": "slow",
+      "performance_confidence": 0.65,
+      "performance_rationale": "Cloud-backed mounts are latency-sensitive.",
+      "eligible_for_local_target": false,
+      "ineligible_reasons": [
+        "Cloud-backed drive is excluded as a local placement target."
+      ],
+      "metadata_notes": [
+        "Cloud-provider indicators detected in disk name/mount/file system."
+      ]
+    }
+  ],
+  "paths": [
+    {
+      "root_path": "C:\\Media",
+      "disk_mount": "C:\\",
+      "total_size_bytes": 400000000000,
+      "file_count": 100000,
+      "directory_count": 5000,
+      "largest_files": {
+        "entries": []
+      },
+      "largest_directories": [],
+      "file_type_summary": {
+        "top_extensions": [
+          {
+            "extension": "jpg",
+            "files": 50000,
+            "bytes": 150000000000
+          }
+        ],
+        "other_files": 50000,
+        "other_bytes": 250000000000,
+        "total_files": 100000,
+        "total_bytes": 400000000000
+      },
+      "activity": {
+        "recent_files": 1000,
+        "stale_files": 80000,
+        "unknown_modified_files": 19000
+      }
+    },
+    {
+      "root_path": "D:\\Projects",
+      "disk_mount": "D:\\",
+      "total_size_bytes": 600000000000,
+      "file_count": 150000,
+      "directory_count": 12000,
+      "largest_files": {
+        "entries": []
+      },
+      "largest_directories": [],
+      "file_type_summary": {
+        "top_extensions": [
+          {
+            "extension": "rs",
+            "files": 20000,
+            "bytes": 20000000000
+          },
+          {
+            "extension": "zip",
+            "files": 10000,
+            "bytes": 15000000000
+          }
+        ],
+        "other_files": 120000,
+        "other_bytes": 565000000000,
+        "total_files": 150000,
+        "total_bytes": 600000000000
+      },
+      "activity": {
+        "recent_files": 80000,
+        "stale_files": 20000,
+        "unknown_modified_files": 50000
+      }
+    },
+    {
+      "root_path": "J:\\DriveFS",
+      "disk_mount": "J:\\",
+      "total_size_bytes": 200000000000,
+      "file_count": 25000,
+      "directory_count": 2000,
+      "largest_files": {
+        "entries": []
+      },
+      "largest_directories": [],
+      "file_type_summary": {
+        "top_extensions": [
+          {
+            "extension": "docx",
+            "files": 4000,
+            "bytes": 15000000000
+          }
+        ],
+        "other_files": 21000,
+        "other_bytes": 185000000000,
+        "total_files": 25000,
+        "total_bytes": 200000000000
+      },
+      "activity": {
+        "recent_files": 5000,
+        "stale_files": 15000,
+        "unknown_modified_files": 5000
+      }
+    }
+  ],
+  "categories": [
+    {
+      "target": "C:\\Media",
+      "disk_mount": "C:\\",
+      "category": "media",
+      "confidence": 0.9,
+      "rationale": "Media extensions dominate.",
+      "evidence": [
+        ".jpg"
+      ]
+    },
+    {
+      "target": "D:\\Projects",
+      "disk_mount": "D:\\",
+      "category": "work",
+      "confidence": 0.92,
+      "rationale": "Project/work naming and active updates.",
+      "evidence": [
+        "projects"
+      ]
+    },
+    {
+      "target": "D:\\Projects",
+      "disk_mount": "D:\\",
+      "category": "games",
+      "confidence": 0.4,
+      "rationale": "Minor games artifacts.",
+      "evidence": [
+        "steam"
+      ]
+    },
+    {
+      "target": "J:\\DriveFS",
+      "disk_mount": "J:\\",
+      "category": "work",
+      "confidence": 0.6,
+      "rationale": "Documents-like cloud content.",
+      "evidence": [
+        "docx"
+      ]
+    }
+  ],
+  "duplicates": [
+    {
+      "size_bytes": 157286400,
+      "hash": "demo-hash",
+      "files": [
+        {
+          "path": "C:\\Media\\movie-copy-1.mkv",
+          "disk_mount": "C:\\",
+          "modified": "2024-01-01T00:00:00Z"
+        },
+        {
+          "path": "D:\\Projects\\movie-copy-2.mkv",
+          "disk_mount": "D:\\",
+          "modified": "2024-01-02T00:00:00Z"
+        },
+        {
+          "path": "D:\\Projects\\movie-copy-3.mkv",
+          "disk_mount": "D:\\",
+          "modified": "2024-01-03T00:00:00Z"
+        }
+      ],
+      "total_wasted_bytes": 314572800,
+      "intent": {
+        "label": "likely_redundant",
+        "rationale": "No backup indicators."
+      }
+    }
+  ],
+  "recommendations": [],
+  "policy_decisions": [],
+  "rule_traces": [],
+  "warnings": []
+}

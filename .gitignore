@@ -1,0 +1,12 @@
+/target
+**/*.rs.bk
+storage-strategist-report.json
+summary.md
+demo-report.json
+demo-summary.md
+demo-report-pdu.json
+eval-result.json
+benchmark-result.json
+apps/desktop/node_modules
+apps/desktop/dist
+apps/desktop/src-tauri/target

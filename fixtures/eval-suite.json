@@ -1,0 +1,16 @@
+{
+  "cases": [
+    {
+      "name": "sample-fixture",
+      "report": "sample-report.json",
+      "expected_top_ids": [
+        "backup-gap",
+        "duplicate-cleanup-candidate",
+        "cloud-backed-target-exclusion"
+      ],
+      "forbidden_ids": [
+        "consolidation-opportunity"
+      ]
+    }
+  ]
+}
