@@ -119,6 +119,7 @@ pub enum ScanPhase {
     WalkingFiles,
     Categorizing,
     Dedupe,
+    Analyzing,
     Recommending,
     Done,
 }
@@ -440,4 +441,35 @@ pub enum RuleTraceStatus {
     #[default]
     Skipped,
     Rejected,
+}
+
+// A collection of historical snapshots.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+pub struct ScanHistory {
+    pub snapshots: Vec<ScanSnapshot>,
+}
+
+// A summary of a scan at a point in time, for historical trend analysis.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct ScanSnapshot {
+    pub scan_id: String,
+    pub generated_at: String,
+    pub disks: Vec<DiskSnapshot>,
+    pub paths: Vec<PathSnapshot>,
+}
+
+// A snapshot of a disk's state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DiskSnapshot {
+    pub mount_point: String,
+    pub total_space_bytes: u64,
+    pub free_space_bytes: u64,
+}
+
+// A snapshot of a scanned path's state.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct PathSnapshot {
+    pub root_path: String,
+    pub total_size_bytes: u64,
+    pub file_count: u64,
 }

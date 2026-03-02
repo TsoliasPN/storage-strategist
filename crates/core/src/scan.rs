@@ -16,9 +16,11 @@ use tracing::info;
 use uuid::Uuid;
 use walkdir::WalkDir;
 
+use crate::analyzers;
 use crate::categorize::{aggregate_categories_by_disk, categorize_disks, categorize_paths};
 use crate::dedupe::{find_duplicates, FileRecord};
 use crate::device::{enrich_disks, DiskProbe};
+use crate::history;
 use crate::model::{
     ActivitySignals, BackendParity, DirectoryUsage, DiskInfo, DiskKind, ExtensionUsage, FileEntry,
     FileTypeSummary, LargestFiles, PathStats, Report, ScanBackendKind, ScanMetadata, ScanMetrics,
@@ -504,6 +506,19 @@ where
         (backend_output, categories, duplicates)
     };
 
+    emit_scan_event(
+        options,
+        &mut on_event,
+        &scan_id,
+        &mut total_events,
+        &mut phase_counts,
+        ScanPhase::Analyzing,
+        None,
+        backend_output.counters.scanned_files,
+        backend_output.counters.scanned_bytes,
+        warnings.len() as u64,
+    );
+
     let scan = ScanMetadata {
         roots: roots
             .iter()
@@ -561,11 +576,20 @@ where
         warnings,
     };
 
+    // Run general recommendations
     let recommendation_bundle = generate_recommendation_bundle(&report);
     report.recommendations = recommendation_bundle.recommendations;
     report.policy_decisions = recommendation_bundle.policy_decisions;
     report.rule_traces = recommendation_bundle.rule_traces;
     report.scan_metrics.contradiction_count = recommendation_bundle.contradiction_count;
+
+    // Run specific analyzers
+    let analyzer_results = analyzers::run_analyzers(&report);
+    for result in analyzer_results {
+        report.recommendations.extend(result.recommendations);
+        report.rule_traces.extend(result.traces);
+    }
+
     report.scan_metrics.permission_denied_warnings = report
         .warnings
         .iter()
@@ -599,7 +623,39 @@ where
 
     persist_cached_report(options, &roots, &mut report);
 
+    if !options.dry_run {
+        if let Err(err) = append_scan_to_history(&report) {
+            append_warning_once(
+                &mut report.warnings,
+                format!("Failed to append scan to history: {}", err),
+            );
+        }
+    }
+
     Ok(report)
+}
+
+fn append_scan_to_history(report: &Report) -> Result<()> {
+    let mut history = history::load_history()?;
+    
+    let snapshot = crate::model::ScanSnapshot {
+        scan_id: report.scan_id.clone(),
+        generated_at: report.generated_at.clone(),
+        disks: report.disks.iter().map(|d| crate::model::DiskSnapshot {
+            mount_point: d.mount_point.clone(),
+            total_space_bytes: d.total_space_bytes,
+            free_space_bytes: d.free_space_bytes,
+        }).collect(),
+        paths: report.paths.iter().map(|p| crate::model::PathSnapshot {
+            root_path: p.root_path.clone(),
+            total_size_bytes: p.total_size_bytes,
+            file_count: p.file_count,
+        }).collect(),
+    };
+
+    history.snapshots.push(snapshot);
+    history::save_history(&history)?;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

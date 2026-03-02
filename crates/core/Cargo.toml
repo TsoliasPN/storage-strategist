@@ -13,6 +13,8 @@ anyhow.workspace = true
 blake3.workspace = true
 chrono.workspace = true
 globset.workspace = true
+image = { version = "0.25.1", default-features = false, features = ["jpeg", "png"] }
+image_hasher = "2.1.0"
 parallel-disk-usage = { workspace = true, optional = true }
 serde.workspace = true
 serde_json.workspace = true

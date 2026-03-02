@@ -1,9 +1,11 @@
+pub mod analyzers;
 pub mod categorize;
 pub mod dedupe;
 pub mod device;
 pub mod diagnostics;
 pub mod doctor;
 pub mod eval;
+pub mod history;
 pub mod markdown;
 pub mod model;
 pub mod planner;
