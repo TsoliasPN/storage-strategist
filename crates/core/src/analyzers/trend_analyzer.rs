@@ -1,6 +1,8 @@
 use crate::analyzers::{Analyzer, AnalyzerResult};
 use crate::history;
-use crate::model::{EstimatedImpact, Recommendation, Report, RiskLevel, RuleTrace, RuleTraceStatus};
+use crate::model::{
+    EstimatedImpact, Recommendation, Report, RiskLevel, RuleTrace, RuleTraceStatus,
+};
 use chrono::{DateTime, Utc};
 use std::collections::HashMap;
 

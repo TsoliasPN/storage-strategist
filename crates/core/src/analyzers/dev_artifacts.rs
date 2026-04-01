@@ -100,7 +100,7 @@ impl Analyzer for DevArtifactsAnalyzer {
             });
         } else {
             for rec in &recommendations {
-                 traces.push(RuleTrace {
+                traces.push(RuleTrace {
                     rule_id: self.id().to_string(),
                     status: RuleTraceStatus::Emitted,
                     detail: format!("Emitted recommendation '{}'", rec.id),

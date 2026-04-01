@@ -76,7 +76,10 @@ impl Analyzer for SystemCachesAnalyzer {
                         estimated_impact: EstimatedImpact {
                             space_saving_bytes: Some(*total_size),
                             performance: None,
-                            risk_notes: Some(format!("Running the cleanup command will remove cached data, which may be redownloaded later.")),
+                            risk_notes: Some(
+                                "Running the cleanup command will remove cached data, which may be redownloaded later."
+                                    .to_string(),
+                            ),
                         },
                         risk_level: RiskLevel::Low,
                     };
@@ -84,7 +87,7 @@ impl Analyzer for SystemCachesAnalyzer {
                 }
             }
         }
-        
+
         if recommendations.is_empty() {
             traces.push(RuleTrace {
                 rule_id: self.id().to_string(),
@@ -95,7 +98,7 @@ impl Analyzer for SystemCachesAnalyzer {
             });
         } else {
             for rec in &recommendations {
-                 traces.push(RuleTrace {
+                traces.push(RuleTrace {
                     rule_id: self.id().to_string(),
                     status: RuleTraceStatus::Emitted,
                     detail: format!("Emitted recommendation '{}'", rec.id),
@@ -143,7 +146,6 @@ fn get_os_cache_targets() -> Vec<CacheTarget> {
     // TODO: Add paths for Linux and macOS
     Vec::new()
 }
-
 
 fn human_bytes(value: u64) -> String {
     const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
