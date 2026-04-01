@@ -637,20 +637,28 @@ where
 
 fn append_scan_to_history(report: &Report) -> Result<()> {
     let mut history = history::load_history()?;
-    
+
     let snapshot = crate::model::ScanSnapshot {
         scan_id: report.scan_id.clone(),
         generated_at: report.generated_at.clone(),
-        disks: report.disks.iter().map(|d| crate::model::DiskSnapshot {
-            mount_point: d.mount_point.clone(),
-            total_space_bytes: d.total_space_bytes,
-            free_space_bytes: d.free_space_bytes,
-        }).collect(),
-        paths: report.paths.iter().map(|p| crate::model::PathSnapshot {
-            root_path: p.root_path.clone(),
-            total_size_bytes: p.total_size_bytes,
-            file_count: p.file_count,
-        }).collect(),
+        disks: report
+            .disks
+            .iter()
+            .map(|d| crate::model::DiskSnapshot {
+                mount_point: d.mount_point.clone(),
+                total_space_bytes: d.total_space_bytes,
+                free_space_bytes: d.free_space_bytes,
+            })
+            .collect(),
+        paths: report
+            .paths
+            .iter()
+            .map(|p| crate::model::PathSnapshot {
+                root_path: p.root_path.clone(),
+                total_size_bytes: p.total_size_bytes,
+                file_count: p.file_count,
+            })
+            .collect(),
     };
 
     history.snapshots.push(snapshot);
@@ -972,7 +980,18 @@ fn build_pdu_tree_summary(
     });
     largest_directories.truncate(options.largest_directories_limit);
 
-    Ok((Some(tree.size().into()), Some(largest_directories)))
+    // The native walker reports the sum of file sizes only. The PDU tree summary
+    // includes the root directory entry size on some platforms, which creates a
+    // stable one-directory delta (commonly 4096 bytes on Linux) in parity checks.
+    let root_directory_size = fs::metadata(root)
+        .ok()
+        .filter(|metadata| metadata.is_dir())
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
+    let total_size: u64 = tree.size().into();
+    let normalized_total_size = total_size.saturating_sub(root_directory_size);
+
+    Ok((Some(normalized_total_size), Some(largest_directories)))
 }
 
 #[cfg(not(feature = "pdu-backend"))]

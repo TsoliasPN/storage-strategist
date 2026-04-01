@@ -1,9 +1,11 @@
 use std::collections::HashMap;
-use std::env;
 use std::process::Command;
 
 use crate::model::{DiskInfo, DiskKind, DiskStorageType, LocalityClass, PerformanceClass};
 use serde::Deserialize;
+
+#[cfg(windows)]
+use std::env;
 
 #[derive(Debug, Clone)]
 pub struct DiskProbe {
@@ -896,11 +898,6 @@ fn normalize_windows_mount(value: &str) -> String {
         normalized.replace_range(..1, &drive);
     }
     normalized
-}
-
-#[cfg(not(windows))]
-fn normalize_windows_mount(value: &str) -> String {
-    value.trim().to_string()
 }
 
 #[cfg(not(windows))]

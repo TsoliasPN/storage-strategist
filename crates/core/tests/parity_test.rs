@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::path::PathBuf;
-use storage_strategist_core::scan::ScanOptions;
 use storage_strategist_core::scan::compare_backends;
+use storage_strategist_core::scan::ScanOptions;
 
 #[test]
 fn test_backend_parity_on_fixtures() -> Result<()> {
@@ -17,9 +17,13 @@ fn test_backend_parity_on_fixtures() -> Result<()> {
         // Fallback: if running from workspace root
         fixtures_path = PathBuf::from("fixtures");
     }
-    
+
     // Ensure we found the fixtures
-    assert!(fixtures_path.exists(), "Fixtures directory not found at {:?}", fixtures_path);
+    assert!(
+        fixtures_path.exists(),
+        "Fixtures directory not found at {:?}",
+        fixtures_path
+    );
 
     let options = ScanOptions {
         paths: vec![fixtures_path],
@@ -36,8 +40,7 @@ fn test_backend_parity_on_fixtures() -> Result<()> {
     assert!(
         parity.within_tolerance,
         "Backends diverged beyond tolerance! Delta: files={}, bytes={}",
-        parity.scanned_files_delta,
-        parity.scanned_bytes_delta
+        parity.scanned_files_delta, parity.scanned_bytes_delta
     );
 
     // Stricter check for fixtures: we expect EXACT parity (0 delta) because standard files

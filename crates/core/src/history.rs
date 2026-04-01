@@ -1,7 +1,7 @@
 use crate::model::ScanHistory;
 use anyhow::Result;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 const CACHE_DIR_NAME: &str = "storage-strategist-cache";
 const HISTORY_FILE_NAME: &str = "history.json";
